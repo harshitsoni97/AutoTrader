@@ -1,30 +1,38 @@
-"""Intraday LangGraph — runs every minute during market hours (9:15–15:30 IST)."""
-
-from __future__ import annotations
-
-from langgraph.graph import END, StateGraph
-
-from autotrader.agents.layer5.monitoring import monitoring_agent
+"""Intraday monitoring graph - runs during market hours."""
+import structlog
+from langgraph.graph import StateGraph, END
 from autotrader.core.state import TradingState
+from autotrader.agents.layer1.market_regime import market_regime_agent
+from autotrader.agents.layer4.governance import governance_agent
+from autotrader.agents.layer5.monitoring import monitoring_agent
+
+logger = structlog.get_logger()
 
 
-def _continue_monitoring(state: TradingState) -> str:
-    """Continue if there are still open positions."""
-    open_positions = [p for p in state.get("positions", []) if p.get("status") == "OPEN"]
-    return "monitor" if open_positions else END
+def should_monitor(state: TradingState) -> str:
+    """Determine if monitoring should continue or if we should check for new trades."""
+    positions = state.get("positions", [])
+    open_positions = [p for p in positions if p.get("status", "open") == "open"]
+    if open_positions:
+        return "has_positions"
+    return "no_positions"
 
 
 def build_intraday_graph():
-    """Construct and compile the intraday monitoring LangGraph."""
+    """Build and compile the intraday monitoring graph."""
     graph = StateGraph(TradingState)
-
-    graph.add_node("monitor", monitoring_agent)
-
-    graph.set_entry_point("monitor")
-    graph.add_conditional_edges(
-        "monitor",
-        _continue_monitoring,
-        {"monitor": END, END: END},  # Single-pass per scheduler tick
-    )
-
+    
+    # Add nodes
+    graph.add_node("market_regime", market_regime_agent)
+    graph.add_node("governance", governance_agent)
+    graph.add_node("monitoring", monitoring_agent)
+    
+    # Set entry point
+    graph.set_entry_point("market_regime")
+    
+    # market_regime -> governance -> monitoring -> END
+    graph.add_edge("market_regime", "governance")
+    graph.add_edge("governance", "monitoring")
+    graph.add_edge("monitoring", END)
+    
     return graph.compile()
