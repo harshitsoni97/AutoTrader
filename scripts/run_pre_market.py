@@ -1,84 +1,75 @@
 #!/usr/bin/env python3
-"""Pre-market run — scheduled at 08:00 IST.
-
-Usage:
-    python scripts/run_pre_market.py
-"""
-
-import logging
+"""Run pre-market analysis. Scheduled at 08:00 IST."""
 import sys
-from pathlib import Path
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Allow running from repo root
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
+import structlog
+from autotrader.graphs.pre_market import build_pre_market_graph
 from autotrader.core.config import load_config
 from autotrader.core.state import create_initial_state
-from autotrader.graphs.pre_market import build_pre_market_graph
-from autotrader.reports.generators import save_all_reports
 from autotrader.safety.controls import SafetyControls
+from autotrader.reports.generators import generate_daily_trade_report, save_report
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
-def main() -> int:
-    logger.info("=== AutoTrader Pre-Market Run Starting ===")
-
-    # Safety pre-flight
+def main():
+    """Run the pre-market analysis pipeline."""
+    logger.info("pre_market_starting")
+    
+    # Load configuration
+    try:
+        config = load_config()
+        logger.info("config_loaded", strategy_version=config.strategy_version.strategy_version)
+    except Exception as e:
+        logger.error("config_load_failed", error=str(e))
+        sys.exit(1)
+    
+    # Safety checks
     safety = SafetyControls()
     ok, issues = safety.run_all_checks_basic()
     if not ok:
-        for issue in issues:
-            logger.error("Safety check failed: %s", issue)
-        logger.error("Pre-market run ABORTED due to safety checks")
-        return 1
-
-    cfg = load_config()
-    logger.info("Config loaded: capital=%.0f, min_score=%.0f", cfg.trading_policy.total_capital, cfg.trading_policy.minimum_score)
-
-    # Build initial state
+        logger.error("safety_checks_failed", issues=issues)
+        print(f"Safety checks failed: {issues}")
+        return
+    
+    logger.info("safety_checks_passed")
+    
+    # Initialize state
     state = create_initial_state(session_type="pre_market")
-
+    
     # Build and run graph
     graph = build_pre_market_graph()
-    logger.info("Running pre-market analysis graph...")
-    result = graph.invoke(state)
-
-    # Report outcomes
-    logger.info("--- PRE-MARKET RESULTS ---")
-    logger.info("Market Regime: %s (confidence=%.2f)", result.get("market_regime"), result.get("market_confidence"))
-    logger.info("Top Sectors: %s", result.get("top_sectors"))
-    logger.info("Catalysts Found: %d", len(result.get("catalysts", [])))
-    logger.info("Candidates: %d", len(result.get("candidates", [])))
-    logger.info("Scored Opportunities: %d", len(result.get("scored_opportunities", [])))
-    logger.info("Governance: %s — %s", result.get("governance_approved"), result.get("governance_reason"))
-    logger.info("Risk: %s — %s", result.get("risk_passed"), result.get("risk_reason"))
-
-    if result.get("trade_plan"):
-        tp = result["trade_plan"]
-        logger.info("Trade Plan: %s Entry=%.2f Stop=%.2f T1=%.2f T2=%.2f Qty=%d",
-                    tp.get("symbol"), tp.get("entry", 0), tp.get("stop", 0),
-                    tp.get("target1", 0), tp.get("target2", 0), tp.get("qty", 0))
-
-    if result.get("orders"):
-        for order in result["orders"]:
-            logger.info("Order: %s %s x%d @ %.2f [%s]",
-                        order.get("order_id"), order.get("symbol"), order.get("qty", 0),
-                        order.get("fill_price", 0), order.get("status"))
-
-    # Save reports
-    paths = save_all_reports(result, "reports")
-    for report_type, path in paths.items():
-        logger.info("Report saved: %s → %s", report_type, path)
-
-    if result.get("errors"):
-        for err in result["errors"]:
-            logger.warning("Error: %s", err)
-
-    logger.info("=== Pre-Market Run Complete ===")
-    return 0
+    
+    logger.info("starting_pre_market_analysis")
+    try:
+        result = graph.invoke(state)
+        logger.info(
+            "pre_market_complete",
+            regime=result.get("market_regime"),
+            governance=result.get("governance_approved"),
+            risk=result.get("risk_passed"),
+            trades=result.get("daily_trades_taken", 0),
+        )
+    except Exception as e:
+        logger.error("pre_market_graph_failed", error=str(e))
+        raise
+    
+    # Generate and save report
+    report = generate_daily_trade_report(result)
+    report_filename = f"{result.get('run_date', 'unknown')}_pre_market_report.md"
+    path = save_report(report, report_filename)
+    logger.info("pre_market_report_saved", report_path=path)
+    
+    print(f"\nPre-market analysis complete.")
+    print(f"Market Regime: {result.get('market_regime')}")
+    print(f"Governance Approved: {result.get('governance_approved')}")
+    print(f"Risk Passed: {result.get('risk_passed')}")
+    print(f"Report saved to: {path}")
+    
+    return result
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

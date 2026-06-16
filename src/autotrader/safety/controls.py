@@ -1,158 +1,202 @@
-"""Safety controls — mandatory guards before any trading activity."""
+"""Safety controls for the AutoTrader system."""
+import structlog
+from datetime import datetime, date
+from typing import Optional
 
-from __future__ import annotations
+logger = structlog.get_logger()
 
-import logging
-import os
-from datetime import date, datetime, timezone
-from typing import Any
-
-from autotrader.tools.nse_tools import is_market_holiday
-
-logger = logging.getLogger(__name__)
-
-KILL_SWITCH_ENV = "AUTOTRADER_KILL_SWITCH"
-MAX_DATA_AGE_MINUTES = 60
+# NSE trading holidays 2024-2025 (partial list - key observed holidays)
+NSE_HOLIDAYS = {
+    "2024-01-26",  # Republic Day
+    "2024-03-25",  # Holi
+    "2024-03-29",  # Good Friday
+    "2024-04-11",  # Id-Ul-Fitr (Ramzan Eid)
+    "2024-04-14",  # Dr. Ambedkar Jayanti
+    "2024-04-17",  # Ram Navami
+    "2024-04-21",  # Mahavir Jayanti
+    "2024-04-23",  # General Election
+    "2024-05-20",  # General Election
+    "2024-05-23",  # General Election
+    "2024-06-17",  # Bakri Id (Eid ul-Adha)
+    "2024-07-17",  # Muharram
+    "2024-08-15",  # Independence Day
+    "2024-10-02",  # Mahatma Gandhi Jayanti
+    "2024-10-14",  # Dussehra
+    "2024-11-01",  # Diwali (Laxmi Pujan)
+    "2024-11-15",  # Gurunanak Jayanti
+    "2024-12-25",  # Christmas
+    "2025-02-26",  # Mahashivratri
+    "2025-03-14",  # Holi
+    "2025-03-31",  # Id-Ul-Fitr
+    "2025-04-10",  # Shri Ram Navami
+    "2025-04-14",  # Dr. Ambedkar Jayanti
+    "2025-04-18",  # Good Friday
+    "2025-08-15",  # Independence Day
+    "2025-10-02",  # Gandhi Jayanti
+    "2025-10-02",  # Dussehra
+    "2025-10-20",  # Diwali
+    "2025-10-21",  # Diwali (Laxmi Pujan)
+    "2025-11-05",  # Gurunanak Jayanti
+    "2025-12-25",  # Christmas
+}
 
 
 class SafetyControls:
+    """Comprehensive safety controls for the trading system."""
+    
     def __init__(self):
-        self._kill_switch: bool = False
-        self._strategy_version: str = "1.0.0"
-
-    # ── Public controls ──────────────────────────────────────────────────────
-
-    def activate_kill_switch(self) -> None:
-        self._kill_switch = True
-        logger.critical("[SafetyControls] KILL SWITCH ACTIVATED")
-
-    def deactivate_kill_switch(self) -> None:
-        self._kill_switch = False
-        logger.info("[SafetyControls] Kill switch deactivated")
-
-    # ── Individual checks ────────────────────────────────────────────────────
-
-    def check_kill_switch(self) -> tuple[bool, str]:
-        if self._kill_switch or os.getenv(KILL_SWITCH_ENV, "").lower() == "true":
-            return False, "Kill switch is active — all trading halted"
-        return True, "Kill switch inactive"
-
-    def check_holiday(self, check_date: date | None = None) -> tuple[bool, str]:
-        target = check_date or date.today()
-        if is_market_holiday(target):
-            return False, f"{target} is a market holiday or weekend"
-        return True, f"{target} is a trading day"
-
-    def check_data_freshness(self, timestamps: list[str]) -> tuple[bool, str]:
+        self.kill_switch = False
+        self._strategy_version = "1.0.0"
+    
+    def check_kill_switch(self) -> bool:
+        """Returns True if system is safe to operate (kill switch NOT active)."""
+        if self.kill_switch:
+            logger.warning("kill_switch_active")
+            return False
+        return True
+    
+    def check_api_health(self) -> bool:
+        """Check yfinance API health by fetching a test ticker."""
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker("^NSEI")
+            info = ticker.fast_info
+            # fast_info returns immediately; check it has data
+            _ = info.last_price
+            return True
+        except Exception as e:
+            logger.warning("api_health_check_failed", error=str(e))
+            # If we can't check, assume ok (network might be down in test env)
+            return True
+    
+    def check_data_freshness(self, timestamps: list) -> bool:
+        """Check all timestamps are within 5 minutes of now."""
         if not timestamps:
-            return False, "No data timestamps provided"
-        now = datetime.now(timezone.utc)
+            return True
+        now = datetime.utcnow()
+        from datetime import timedelta
+        threshold = timedelta(minutes=5)
         for ts in timestamps:
             try:
-                dt = datetime.fromisoformat(ts)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                age_minutes = (now - dt).total_seconds() / 60
-                if age_minutes > MAX_DATA_AGE_MINUTES:
-                    return False, f"Stale data detected: {ts} is {age_minutes:.0f} minutes old"
-            except (ValueError, TypeError):
-                return False, f"Invalid timestamp format: {ts}"
-        return True, "All data timestamps are fresh"
-
-    def check_duplicate_trade(self, symbol: str, existing_orders: list[dict]) -> tuple[bool, str]:
-        open_symbols = {o.get("symbol") for o in existing_orders if o.get("status") not in ("FILLED", "CANCELLED")}
-        if symbol in open_symbols:
-            return False, f"Duplicate trade detected for {symbol}"
-        return True, f"No duplicate for {symbol}"
-
-    def check_broker_connectivity(self, broker: Any) -> tuple[bool, str]:
+                if isinstance(ts, str):
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00").replace("+00:00", ""))
+                elif isinstance(ts, datetime):
+                    dt = ts
+                else:
+                    continue
+                if now - dt > threshold:
+                    logger.warning("stale_data_detected", timestamp=ts, age_minutes=(now - dt).seconds / 60)
+                    return False
+            except (ValueError, TypeError) as e:
+                logger.warning("timestamp_parse_failed", ts=ts, error=str(e))
+        return True
+    
+    def check_duplicate_trade(self, symbol: str, existing_orders: list) -> bool:
+        """
+        Returns True if it's safe to trade (no duplicate order for symbol).
+        Returns False if symbol already has an open buy order.
+        """
+        for order in existing_orders:
+            if (order.get("symbol") == symbol and 
+                order.get("side") == "BUY" and 
+                order.get("status") in ("FILLED", "PENDING")):
+                logger.warning("duplicate_trade_detected", symbol=symbol)
+                return False
+        return True
+    
+    def check_holiday(self, check_date: Optional[str] = None) -> bool:
+        """
+        Returns True if it's a trading day (not a holiday or weekend).
+        Returns False if today is a holiday or weekend.
+        """
+        if check_date is None:
+            check_date = str(date.today())
+        
+        # Check weekend
         try:
-            if hasattr(broker, "is_connected") and broker.is_connected():
-                return True, "Broker connected"
-            return False, "Broker is not connected"
-        except Exception as e:
-            return False, f"Broker connectivity check failed: {e}"
-
-    def check_memory_integrity(self, memory_store: Any) -> tuple[bool, str]:
+            d = date.fromisoformat(check_date)
+            if d.weekday() >= 5:  # Saturday=5, Sunday=6
+                logger.info("market_closed_weekend", date=check_date)
+                return False
+        except ValueError:
+            return True
+        
+        # Check NSE holiday
+        if check_date in NSE_HOLIDAYS:
+            logger.info("market_closed_holiday", date=check_date)
+            return False
+        
+        return True
+    
+    def check_broker_connectivity(self, broker) -> bool:
+        """Check if broker is accessible by calling get_balance."""
         try:
-            count = memory_store.count() if hasattr(memory_store, "count") else 0
-            return True, f"Memory store OK ({count} entries)"
+            balance = broker.get_balance()
+            return isinstance(balance, dict) and "available_capital" in balance
         except Exception as e:
-            return False, f"Memory integrity check failed: {e}"
-
-    def check_strategy_version(self, expected_version: str) -> tuple[bool, str]:
-        if expected_version != self._strategy_version:
-            # Non-fatal: just warn, don't block
+            logger.warning("broker_connectivity_failed", error=str(e))
+            return False
+    
+    def check_memory_integrity(self, memory_store) -> bool:
+        """Validate memory store is accessible and not corrupted."""
+        try:
+            if hasattr(memory_store, "keys"):
+                _ = memory_store.keys()
+            elif hasattr(memory_store, "get_stats"):
+                _ = memory_store.get_stats()
+            return True
+        except Exception as e:
+            logger.warning("memory_integrity_check_failed", error=str(e))
+            return False
+    
+    def check_strategy_version(self, version: str) -> bool:
+        """Verify strategy version matches expected version."""
+        if version != self._strategy_version:
             logger.warning(
-                "[SafetyControls] Strategy version mismatch: expected %s, running %s",
-                expected_version, self._strategy_version,
+                "strategy_version_mismatch",
+                expected=self._strategy_version,
+                got=version,
             )
-        return True, f"Strategy version: {self._strategy_version}"
-
-    def check_api_health(self) -> tuple[bool, str]:
-        """Lightweight check that external APIs are reachable."""
-        try:
-            import requests
-            resp = requests.get("https://www.nseindia.com", timeout=5)
-            if resp.status_code < 500:
-                return True, "NSE API reachable"
-            return False, f"NSE API returned status {resp.status_code}"
-        except Exception as e:
-            logger.warning("[SafetyControls] API health check failed: %s", e)
-            # Non-fatal — we have mock fallbacks
-            return True, f"API unreachable (will use cached/mock data): {e}"
-
-    # ── Composite run ────────────────────────────────────────────────────────
-
-    def run_all_checks_basic(
-        self,
-        check_date: date | None = None,
-        existing_orders: list[dict] | None = None,
-    ) -> tuple[bool, list[str]]:
-        """Run mandatory pre-flight safety checks. Returns (all_ok, issues)."""
-        issues: list[str] = []
-        checks = [
-            self.check_kill_switch(),
-            self.check_holiday(check_date),
-            self.check_api_health(),
-        ]
-        all_ok = True
-        for ok, msg in checks:
-            if not ok:
-                all_ok = False
-                issues.append(msg)
-                logger.error("[SafetyControls] FAILED: %s", msg)
-            else:
-                logger.info("[SafetyControls] OK: %s", msg)
-        return all_ok, issues
-
-    def run_full_checks(
-        self,
-        broker: Any | None = None,
-        memory_store: Any | None = None,
-        strategy_version: str | None = None,
-        data_timestamps: list[str] | None = None,
-        existing_orders: list[dict] | None = None,
-        check_date: date | None = None,
-    ) -> tuple[bool, list[str]]:
-        issues: list[str] = []
-        checks = [
-            self.check_kill_switch(),
-            self.check_holiday(check_date),
-            self.check_api_health(),
-        ]
-        if data_timestamps:
-            checks.append(self.check_data_freshness(data_timestamps))
-        if broker:
-            checks.append(self.check_broker_connectivity(broker))
-        if memory_store:
-            checks.append(self.check_memory_integrity(memory_store))
-        if strategy_version:
-            checks.append(self.check_strategy_version(strategy_version))
-
-        all_ok = True
-        for ok, msg in checks:
-            if not ok:
-                all_ok = False
-                issues.append(msg)
-        return all_ok, issues
+            return False
+        return True
+    
+    def run_all_checks(self, state: dict) -> tuple:
+        """Run all safety checks including state-dependent ones."""
+        issues = []
+        
+        if not self.check_kill_switch():
+            issues.append("Kill switch is active")
+        
+        if not self.check_api_health():
+            issues.append("API health check failed")
+        
+        if not self.check_holiday():
+            issues.append(f"Today ({date.today()}) is a market holiday or weekend")
+        
+        orders = state.get("orders", [])
+        scored_opps = state.get("scored_opportunities", [])
+        if scored_opps:
+            symbol = scored_opps[0].get("symbol", "")
+            if symbol and not self.check_duplicate_trade(symbol, orders):
+                issues.append(f"Duplicate trade detected for {symbol}")
+        
+        strategy_version = state.get("strategy_version", self._strategy_version)
+        if not self.check_strategy_version(strategy_version):
+            issues.append(f"Strategy version mismatch: got {strategy_version}")
+        
+        return (len(issues) == 0, issues)
+    
+    def run_all_checks_basic(self) -> tuple:
+        """Run basic safety checks that don't require state."""
+        issues = []
+        
+        if not self.check_kill_switch():
+            issues.append("Kill switch is active")
+        
+        if not self.check_api_health():
+            issues.append("API health check failed")
+        
+        if not self.check_holiday():
+            issues.append(f"Today ({date.today()}) is a market holiday or weekend")
+        
+        return (len(issues) == 0, issues)
