@@ -284,6 +284,61 @@ config_version: "1"
 
 ---
 
+## LLM Configuration
+
+LLM integration is controlled entirely through `config/llm_config.yaml`. No code changes are needed to swap models.
+
+```yaml
+llm:
+  # Fast / low-cost — used for catalyst interpretation and regime narrative
+  fast_model: "claude-haiku-4-5-20251001"
+  fast_max_tokens: 512
+  fast_temperature: 0.1
+
+  # Analysis tier — used for scoring review (top opportunity holistic check)
+  analysis_model: "claude-sonnet-4-6"
+  analysis_max_tokens: 1024
+  analysis_temperature: 0.2
+
+  # Report synthesis — used once post-market for daily learning narrative
+  # Set report_thinking_budget: 0 to disable extended thinking (faster/cheaper)
+  report_model: "claude-sonnet-4-6"
+  report_max_tokens: 4096
+  report_thinking_budget: 2000
+
+  # Feature flags — disable any to use pure deterministic fallback
+  enable_catalyst_llm: true     # Layer 1: catalyst score refinement
+  enable_regime_llm: true       # Layer 1: regime narrative enrichment
+  enable_scoring_llm: true      # Layer 3: holistic opportunity review
+  enable_report_llm: true       # Layer 6: daily learning report narrative
+```
+
+### Where LLMs are used and why
+
+| Agent | Model tier | What it does | Fallback if disabled |
+|---|---|---|---|
+| `CatalystIntelligenceAgent` | Fast (haiku) | Re-scores top 5 catalysts with contextual narrative; adjusts score ±10 max | Deterministic score table unchanged |
+| `MarketRegimeAgent` | Fast (haiku) | Adds narrative key factors and trading implication; adjusts confidence ±0.10 max | Quantitative regime score only |
+| `OpportunityScoringAgent` | Analysis (sonnet) | Holistic review of top 3 setups; adjusts winner score ±5; can veto if clearly wrong | Deterministic composite score unchanged |
+| `DailyLearningAgent` | Report (sonnet + thinking) | Writes executive summary, pattern insights, and tomorrow's recommendations | Template-based boilerplate sections |
+
+### Pydantic enforcement
+
+Every LLM call uses LangChain's `with_structured_output()` bound to a Pydantic model. This means:
+- The LLM **cannot** return free-form text that breaks downstream parsing
+- Score adjustments are constrained by `ge`/`le` validators (e.g. ±5 max for scoring review)
+- If the LLM returns an invalid structure, the call raises an exception and the agent falls back to deterministic logic
+
+### Override models via environment variables
+
+```bash
+LLM_FAST_MODEL=claude-haiku-4-5-20251001
+LLM_ANALYSIS_MODEL=claude-sonnet-4-6
+LLM_REPORT_MODEL=claude-opus-4-8
+```
+
+---
+
 ## API Keys and External Dependencies
 
 Copy `.env.example` to `.env` and fill in all values before running live.

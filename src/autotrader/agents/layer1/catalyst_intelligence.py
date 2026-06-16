@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from autotrader.core.config import load_config
+from autotrader.core.llm import CatalystEnrichment, get_fast_llm, structured
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 from autotrader.tools.nse_tools import get_block_deals, get_bulk_deals, get_corporate_actions
@@ -72,6 +74,43 @@ def _score_corporate_actions(symbol: str, actions: list[dict]) -> list[dict]:
     return catalysts
 
 
+def _llm_enrich_catalysts(
+    catalysts: list[dict],
+    market_regime: str,
+    llm_cfg: Any,
+) -> list[dict]:
+    """Use fast LLM to refine scores on the top 5 catalysts (with Pydantic enforcement)."""
+    llm = get_fast_llm(llm_cfg)
+    if llm is None:
+        return catalysts
+
+    enriched = list(catalysts)
+    chain = structured(llm, CatalystEnrichment)
+
+    for i, cat in enumerate(enriched[:5]):
+        prompt = (
+            f"Market regime today: {market_regime}.\n"
+            f"NSE catalyst: symbol={cat['symbol']}, type={cat.get('catalyst_type','unknown')}, "
+            f"base_score={cat['catalyst_score']}, description='{cat.get('reason','')}'\n"
+            "Assess the market significance of this catalyst for an intraday momentum trade. "
+            "Return a CatalystEnrichment with adjusted_score (stay within ±10 of base), "
+            "impact (high/medium/low), narrative (1-2 sentences), and confidence (0-1)."
+        )
+        try:
+            result: CatalystEnrichment = chain.invoke(prompt)
+            enriched[i] = {
+                **cat,
+                "catalyst_score": round(result.adjusted_score, 1),
+                "reason": result.narrative,
+                "llm_impact": result.impact,
+                "llm_confidence": result.confidence,
+            }
+        except Exception as exc:
+            logger.warning("[%s] LLM enrichment failed for %s: %s", AGENT_NAME, cat["symbol"], exc)
+
+    return enriched
+
+
 def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
     logger.info("[%s] Discovering market catalysts", AGENT_NAME)
 
@@ -114,6 +153,13 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
             by_symbol[sym] = cat
 
     final_catalysts = sorted(by_symbol.values(), key=lambda x: x["catalyst_score"], reverse=True)
+
+    # Optional LLM enrichment — refines scores with market context
+    cfg = load_config()
+    if cfg.llm.enable_catalyst_llm:
+        market_regime = state.get("market_regime", "unknown")
+        final_catalysts = _llm_enrich_catalysts(final_catalysts, market_regime, cfg.llm)
+        final_catalysts.sort(key=lambda x: x["catalyst_score"], reverse=True)
 
     msg = create_message(
         source=AGENT_NAME,

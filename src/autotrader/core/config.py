@@ -50,10 +50,32 @@ class StrategyVersion(BaseModel):
     config_version: str = "1"
 
 
+class LLMConfig(BaseModel):
+    # Model identifiers — swap these in llm_config.yaml to change providers
+    fast_model: str = "claude-haiku-4-5-20251001"
+    fast_max_tokens: int = 512
+    fast_temperature: float = 0.1
+
+    analysis_model: str = "claude-sonnet-4-6"
+    analysis_max_tokens: int = 1024
+    analysis_temperature: float = 0.2
+
+    report_model: str = "claude-sonnet-4-6"
+    report_max_tokens: int = 4096
+    report_thinking_budget: int = 2000
+
+    # Feature flags — disable individually to fall back to deterministic logic
+    enable_catalyst_llm: bool = True
+    enable_regime_llm: bool = True
+    enable_scoring_llm: bool = True
+    enable_report_llm: bool = True
+
+
 class PlatformConfig(BaseModel):
     trading_policy: TradingPolicy = Field(default_factory=TradingPolicy)
     memory_policy: MemoryPolicy = Field(default_factory=MemoryPolicy)
     strategy_version: StrategyVersion = Field(default_factory=StrategyVersion)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
 
 
 # Alias used by tests and scripts
@@ -73,6 +95,7 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     tp_data = _load_yaml(root / "trading_policy.yaml").get("trading_policy", {})
     mp_data = _load_yaml(root / "memory_policy.yaml").get("memory_policy", {})
     sv_data = _load_yaml(root / "strategy_version.yaml")
+    llm_data = _load_yaml(root / "llm_config.yaml").get("llm", {})
 
     # Environment variable overrides for key settings
     if os.getenv("TRADING_ENABLED") is not None:
@@ -81,9 +104,17 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         tp_data["total_capital"] = float(os.getenv("TOTAL_CAPITAL"))
     if os.getenv("DRY_RUN") is not None:
         tp_data["dry_run"] = os.getenv("DRY_RUN", "true").lower() == "true"
+    # LLM env overrides
+    if os.getenv("LLM_FAST_MODEL"):
+        llm_data["fast_model"] = os.getenv("LLM_FAST_MODEL")
+    if os.getenv("LLM_ANALYSIS_MODEL"):
+        llm_data["analysis_model"] = os.getenv("LLM_ANALYSIS_MODEL")
+    if os.getenv("LLM_REPORT_MODEL"):
+        llm_data["report_model"] = os.getenv("LLM_REPORT_MODEL")
 
     return PlatformConfig(
         trading_policy=TradingPolicy(**tp_data),
         memory_policy=MemoryPolicy(**mp_data),
         strategy_version=StrategyVersion(**sv_data),
+        llm=LLMConfig(**llm_data),
     )

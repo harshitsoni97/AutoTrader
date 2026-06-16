@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from autotrader.core.config import load_config
+from autotrader.core.llm import ScoringReview, get_analysis_llm, structured
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 
@@ -51,6 +52,44 @@ def _sector_score(symbol: str, sector_rankings: list[dict], top_sectors: list[st
             raw_score = r.get("momentum_score", 0)
             return max(0, min(100, 50 + raw_score * 10))
     return 50.0
+
+
+def _llm_review_opportunities(
+    top3: list[dict],
+    regime: str,
+    confidence: float,
+    llm_cfg: Any,
+) -> dict:
+    """Analysis LLM holistically reviews top 3 and can adjust the winner's score by ±5."""
+    llm = get_analysis_llm(llm_cfg)
+    if llm is None:
+        return {}
+
+    chain = structured(llm, ScoringReview)
+    candidates_text = "\n".join(
+        f"  {i+1}. {c['symbol']} | composite={c['score']:.1f} | pattern={c.get('pattern','NONE')} "
+        f"| rsi={c.get('rsi',50):.0f} | catalyst={c['component_scores'].get('catalyst',0):.0f} "
+        f"| tech={c['component_scores'].get('technical',0):.0f}"
+        for i, c in enumerate(top3)
+    )
+    prompt = (
+        f"Market regime: {regime} (confidence {confidence:.2f})\n"
+        f"Top 3 scored intraday candidates for NSE today:\n{candidates_text}\n\n"
+        "Select the single best setup, provide a score adjustment (±5 max), brief rationale, "
+        "up to 2 concerns, and set pass_review=false only if the setup should be vetoed."
+    )
+    try:
+        result: ScoringReview = chain.invoke(prompt)
+        return {
+            "top_symbol": result.top_symbol,
+            "score_adjustment": result.score_adjustment,
+            "rationale": result.rationale,
+            "concerns": result.concerns,
+            "pass_review": result.pass_review,
+        }
+    except Exception as exc:
+        logger.warning("[%s] LLM scoring review failed: %s", AGENT_NAME, exc)
+        return {}
 
 
 def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
@@ -123,6 +162,27 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
         })
 
     scored.sort(key=lambda x: x["score"], reverse=True)
+
+    # Optional LLM holistic review of the top 3 candidates
+    llm_review: dict = {}
+    if cfg.llm.enable_scoring_llm and scored:
+        llm_review = _llm_review_opportunities(scored[:3], market_regime, market_confidence, cfg.llm)
+        if llm_review:
+            top_sym = llm_review.get("top_symbol")
+            adjustment = llm_review.get("score_adjustment", 0.0)
+            veto = llm_review.get("pass_review", True) is False
+            for s in scored:
+                if s["symbol"] == top_sym:
+                    s["score"] = round(s["score"] + adjustment, 2)
+                    s["composite_score"] = s["score"]
+                    s["llm_rationale"] = llm_review.get("rationale", "")
+                    s["llm_concerns"] = llm_review.get("concerns", [])
+                    if veto:
+                        s["llm_vetoed"] = True
+            if veto and scored and scored[0]["symbol"] == top_sym:
+                scored = [s for s in scored if not s.get("llm_vetoed")]
+            scored.sort(key=lambda x: x["score"], reverse=True)
+
     eligible = [s for s in scored if s["score"] >= policy.minimum_score]
 
     msg = create_message(

@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from autotrader.core.config import load_config
+from autotrader.core.llm import RegimeEnrichment, get_fast_llm, structured
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 from autotrader.tools.market_data import (
@@ -98,6 +100,46 @@ def _determine_regime(
         return "range_bound", round(max(score_bull, score_bear) / total, 2)
 
 
+def _llm_enrich_regime(
+    regime: str,
+    confidence: float,
+    nifty_pct: float,
+    vix: float,
+    fii_net: float,
+    global_pct: float,
+    llm_cfg: Any,
+) -> tuple[str, float, dict]:
+    """Use fast LLM to synthesize a regime narrative and optionally adjust confidence."""
+    llm = get_fast_llm(llm_cfg)
+    if llm is None:
+        return regime, confidence, {}
+
+    chain = structured(llm, RegimeEnrichment)
+    prompt = (
+        f"NSE pre-market data summary:\n"
+        f"  Nifty 5-day return: {nifty_pct:.2f}%\n"
+        f"  India VIX: {vix:.1f}\n"
+        f"  FII net flow (Cr): {fii_net:.0f}\n"
+        f"  Global markets (S&P500+Nasdaq avg): {global_pct:.2f}%\n"
+        f"  Quantitative regime: {regime} (confidence {confidence:.2f})\n\n"
+        "Confirm or refine the regime label and confidence for intraday NSE trading. "
+        "Stay within ±0.10 of the quantitative confidence. "
+        "Provide up to 3 key factors and a one-sentence trading implication."
+    )
+    try:
+        result: RegimeEnrichment = chain.invoke(prompt)
+        enrichment = {
+            "llm_regime_label": result.regime_label,
+            "llm_confidence": result.adjusted_confidence,
+            "llm_key_factors": result.key_factors,
+            "llm_trading_implication": result.trading_implication,
+        }
+        return result.regime_label, result.adjusted_confidence, enrichment
+    except Exception as exc:
+        logger.warning("[%s] LLM regime enrichment failed: %s", AGENT_NAME, exc)
+        return regime, confidence, {}
+
+
 def market_regime_agent(state: TradingState) -> dict[str, Any]:
     logger.info("[%s] Running market regime analysis", AGENT_NAME)
 
@@ -118,6 +160,14 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
 
     regime, confidence = _determine_regime(nifty_pct, vix, fii_net, global_pct)
 
+    # Optional LLM synthesis — narrative enrichment + confidence refinement
+    llm_enrichment: dict = {}
+    cfg = load_config()
+    if cfg.llm.enable_regime_llm:
+        regime, confidence, llm_enrichment = _llm_enrich_regime(
+            regime, confidence, nifty_pct, vix, fii_net, global_pct, cfg.llm
+        )
+
     msg = create_message(
         source=AGENT_NAME,
         target="SectorRotationAgent",
@@ -135,7 +185,10 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
     entry = audit_entry(
         agent=AGENT_NAME,
         action="regime_determined",
-        data={"regime": regime, "confidence": confidence, "vix": vix, "fii_net": fii_net},
+        data={
+            "regime": regime, "confidence": confidence, "vix": vix, "fii_net": fii_net,
+            **llm_enrichment,
+        },
     )
 
     logger.info("[%s] Regime=%s Confidence=%.2f VIX=%.1f", AGENT_NAME, regime, confidence, vix)
