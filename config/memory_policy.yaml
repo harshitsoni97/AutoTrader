@@ -1,0 +1,7 @@
+memory_policy:
+  auto_modify_strategy: false
+  require_review: true
+  minimum_observations: 20
+  minimum_confidence: 0.70
+  short_term_retention_days: 30
+  compression_frequency_days: 7
