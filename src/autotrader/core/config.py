@@ -32,6 +32,7 @@ class TradingPolicy(BaseModel):
     allow_overnight_positions: bool = False
     total_capital: float = 1_000_000.0
     blocked_regimes: List[str] = Field(default_factory=list)
+    dry_run: bool = True  # When True: no real orders sent; post-market compares assumed vs actual
 
 
 class MemoryPolicy(BaseModel):
@@ -55,6 +56,10 @@ class PlatformConfig(BaseModel):
     strategy_version: StrategyVersion = Field(default_factory=StrategyVersion)
 
 
+# Alias used by tests and scripts
+AppConfig = PlatformConfig
+
+
 def _load_yaml(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -74,6 +79,8 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         tp_data["enabled"] = os.getenv("TRADING_ENABLED", "true").lower() == "true"
     if os.getenv("TOTAL_CAPITAL"):
         tp_data["total_capital"] = float(os.getenv("TOTAL_CAPITAL"))
+    if os.getenv("DRY_RUN") is not None:
+        tp_data["dry_run"] = os.getenv("DRY_RUN", "true").lower() == "true"
 
     return PlatformConfig(
         trading_policy=TradingPolicy(**tp_data),

@@ -14,10 +14,11 @@ from typing import Any
 class ShortTermMemory:
     """Thread-safe in-memory short-term store with TTL expiry."""
 
-    def __init__(self, retention_days: int = 30):
+    def __init__(self, retention_days: int = 30, ttl_days: int | None = None):
+        # Accept both parameter names for compatibility
+        self._retention_days = ttl_days if ttl_days is not None else retention_days
         self._store: dict[str, dict] = {}
         self._lock = threading.Lock()
-        self._retention_days = retention_days
 
     def store(self, key: str, value: Any, ttl_days: int | None = None) -> None:
         ttl = ttl_days or self._retention_days
@@ -50,6 +51,15 @@ class ShortTermMemory:
                     results.append({"key": key, "value": entry["value"], "stored_at": entry["stored_at"]})
         return results
 
+    def keys(self) -> list[str]:
+        with self._lock:
+            return list(self._store.keys())
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a plain dict of key → value (without TTL metadata)."""
+        with self._lock:
+            return {k: v["value"] for k, v in self._store.items()}
+
     def expire(self) -> int:
         """Remove all expired entries. Returns count removed."""
         now = datetime.now(timezone.utc)
@@ -67,5 +77,4 @@ class ShortTermMemory:
             return len(self._store)
 
     def list_keys(self) -> list[str]:
-        with self._lock:
-            return list(self._store.keys())
+        return self.keys()

@@ -19,3 +19,7 @@ trading_policy:
   blocked_regimes:
     - "high_volatility_bear"
     - "risk_off_extreme"
+
+# Dry-run mode: trades are selected, sized, and assumed filled at the plan price
+# but no real broker orders are placed. Post-market compares assumed vs actual prices.
+dry_run: true

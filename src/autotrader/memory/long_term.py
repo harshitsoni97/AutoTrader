@@ -17,69 +17,102 @@ class LongTermMemory:
     """Singleton-like in-memory long-term knowledge store."""
 
     _instance: "LongTermMemory | None" = None
-    _lock = threading.Lock()
+    _class_lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            with cls._lock:
+            with cls._class_lock:
                 if cls._instance is None:
                     instance = super().__new__(cls)
-                    instance._store: dict[str, dict] = {}
+                    instance._store: dict[str, dict] = {}  # memory_id → entry
                     instance._write_lock = threading.Lock()
                     cls._instance = instance
         return cls._instance
 
     def store_pattern(
         self,
-        pattern_key: str,
-        description: str,
-        observations: int,
-        win_rate: float,
-        confidence: float,
+        pattern: str | None = None,
+        observations: int = 0,
+        win_rate: float = 0.0,
+        confidence: float = 0.0,
+        # Legacy keyword args kept for internal callers
+        pattern_key: str | None = None,
+        description: str = "",
     ) -> str:
-        memory_id = f"LTM_{str(uuid.uuid4())[:8].upper()}"
+        """Store a validated pattern. Returns memory_id (UUID4 string)."""
+        key = pattern or pattern_key or "unknown"
+        memory_id = str(uuid.uuid4())
+        entry = {
+            "memory_id": memory_id,
+            "pattern_key": key,
+            "description": description or key,
+            "observations": observations,
+            "wins": int(win_rate * observations),
+            "win_rate": round(win_rate, 4),
+            "confidence": round(confidence, 4),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+        }
         with self._write_lock:
-            self._store[pattern_key] = {
-                "memory_id": memory_id,
-                "pattern_key": pattern_key,
-                "description": description,
-                "observations": observations,
-                "wins": int(win_rate * observations),
-                "win_rate": round(win_rate, 4),
-                "confidence": round(confidence, 4),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "last_updated": datetime.now(timezone.utc).isoformat(),
-            }
+            self._store[memory_id] = entry
         return memory_id
 
     def get_pattern(self, pattern_key: str) -> dict | None:
+        """Look up by pattern_key (not memory_id)."""
         with self._write_lock:
-            return self._store.get(pattern_key)
+            for entry in self._store.values():
+                if entry["pattern_key"] == pattern_key:
+                    return entry
+        return None
 
     def update_pattern(
         self,
-        pattern_key: str,
-        observations: int,
-        win_rate: float,
-        confidence: float,
+        memory_id: str,
+        new_observation: bool = True,
+        win: bool | None = None,
+        observations: int | None = None,
+        win_rate: float | None = None,
+        confidence: float | None = None,
     ) -> bool:
+        """Update an existing pattern by memory_id.
+
+        Simple form: update_pattern(mid, new_observation=True) increments observations by 1.
+        Full form: pass observations, win_rate, confidence directly.
+        """
         with self._write_lock:
-            if pattern_key not in self._store:
+            entry = self._store.get(memory_id)
+            if not entry:
                 return False
-            entry = self._store[pattern_key]
-            entry["observations"] = observations
-            entry["wins"] = int(win_rate * observations)
-            entry["win_rate"] = round(win_rate, 4)
-            entry["confidence"] = round(min(0.99, confidence), 4)
+            if new_observation:
+                entry["observations"] += 1
+                if win is True:
+                    entry["wins"] += 1
+                if entry["observations"] > 0:
+                    entry["win_rate"] = round(entry["wins"] / entry["observations"], 4)
+            if observations is not None:
+                entry["observations"] = observations
+            if win_rate is not None:
+                entry["win_rate"] = round(win_rate, 4)
+                entry["wins"] = int(win_rate * entry["observations"])
+            if confidence is not None:
+                entry["confidence"] = round(min(0.99, confidence), 4)
             entry["last_updated"] = datetime.now(timezone.utc).isoformat()
-            return True
+        return True
 
     def retrieve_patterns(self, min_confidence: float = 0.70) -> list[dict]:
         with self._write_lock:
-            return [
-                p for p in self._store.values()
-                if p["confidence"] >= min_confidence
-            ]
+            return [p for p in self._store.values() if p["confidence"] >= min_confidence]
+
+    def get_stats(self) -> dict[str, Any]:
+        with self._write_lock:
+            patterns = list(self._store.values())
+        if not patterns:
+            return {"total_patterns": 0, "avg_win_rate": 0.0, "avg_confidence": 0.0}
+        return {
+            "total_patterns": len(patterns),
+            "avg_win_rate": round(sum(p["win_rate"] for p in patterns) / len(patterns), 4),
+            "avg_confidence": round(sum(p["confidence"] for p in patterns) / len(patterns), 4),
+        }
 
     def expire_stale(self, min_confidence: float = 0.50, stale_threshold_days: int = 90) -> int:
         cutoff = datetime.now(timezone.utc) - timedelta(days=stale_threshold_days)
@@ -96,31 +129,31 @@ class LongTermMemory:
         return len(stale)
 
     def merge_duplicates(self) -> int:
-        """Merge patterns with the same prefix (simplified dedup)."""
+        """Merge entries with the same pattern_key, keeping the one with higher confidence."""
         with self._write_lock:
-            seen_prefixes: dict[str, str] = {}
+            by_key: dict[str, str] = {}  # pattern_key → memory_id to keep
             to_delete: list[str] = []
-            for key in list(self._store.keys()):
-                prefix = key.split("_")[0]
-                if prefix in seen_prefixes:
-                    # Merge: keep higher confidence
-                    existing_key = seen_prefixes[prefix]
-                    existing = self._store[existing_key]
-                    current = self._store[key]
-                    if current["confidence"] > existing["confidence"]:
-                        # Merge into current
-                        current["observations"] += existing["observations"]
-                        current["wins"] += existing.get("wins", 0)
-                        current["win_rate"] = round(current["wins"] / current["observations"], 4) if current["observations"] > 0 else 0
-                        to_delete.append(existing_key)
-                        seen_prefixes[prefix] = key
+            for mid, entry in list(self._store.items()):
+                key = entry["pattern_key"]
+                if key in by_key:
+                    existing_mid = by_key[key]
+                    existing = self._store[existing_mid]
+                    if entry["confidence"] > existing["confidence"]:
+                        # Keep current, discard existing
+                        existing["observations"] += entry["observations"]
+                        existing["wins"] += entry.get("wins", 0)
+                        if existing["observations"] > 0:
+                            existing["win_rate"] = round(existing["wins"] / existing["observations"], 4)
+                        to_delete.append(existing_mid)
+                        by_key[key] = mid
                     else:
-                        existing["observations"] += current["observations"]
-                        existing["wins"] += current.get("wins", 0)
-                        existing["win_rate"] = round(existing["wins"] / existing["observations"], 4) if existing["observations"] > 0 else 0
-                        to_delete.append(key)
+                        existing["observations"] += entry["observations"]
+                        existing["wins"] += entry.get("wins", 0)
+                        if existing["observations"] > 0:
+                            existing["win_rate"] = round(existing["wins"] / existing["observations"], 4)
+                        to_delete.append(mid)
                 else:
-                    seen_prefixes[prefix] = key
+                    by_key[key] = mid
             for k in to_delete:
                 self._store.pop(k, None)
         return len(to_delete)

@@ -1,4 +1,9 @@
-"""Execution Agent — places orders via the broker interface."""
+"""Execution Agent — places orders via the broker interface.
+
+In dry-run mode (trading_policy.dry_run = true) no real broker call is made.
+The assumed fill is the plan entry price with zero slippage. Post-market
+learning compares this assumed fill against the actual end-of-day price.
+"""
 
 from __future__ import annotations
 
@@ -15,9 +20,22 @@ AGENT_NAME = "ExecutionAgent"
 _broker = MockBroker()
 
 
-def execution_agent(state: TradingState) -> dict[str, Any]:
-    logger.info("[%s] Executing trade", AGENT_NAME)
+def _dry_run_fill(trade_plan: dict) -> dict:
+    """Simulate a fill at plan entry price with zero slippage."""
+    return {
+        "order_id": f"DRY-{trade_plan['symbol'][:3].upper()}-000",
+        "symbol": trade_plan["symbol"],
+        "qty": trade_plan["qty"],
+        "side": "BUY",
+        "order_type": "DRY_RUN",
+        "requested_price": trade_plan["entry"],
+        "fill_price": trade_plan["entry"],
+        "slippage": 0.0,
+        "status": "DRY_RUN_ASSUMED",
+    }
 
+
+def execution_agent(state: TradingState) -> dict[str, Any]:
     trade_plan = state.get("trade_plan", {})
     if not trade_plan:
         entry = audit_entry(agent=AGENT_NAME, action="no_trade_plan", data={})
@@ -26,30 +44,40 @@ def execution_agent(state: TradingState) -> dict[str, Any]:
     symbol = trade_plan["symbol"]
     qty = trade_plan["qty"]
     entry_price = trade_plan["entry"]
+    is_dry_run = state.get("dry_run", True)
 
-    # Place limit order at entry price
-    order = _broker.place_order(
-        symbol=symbol,
-        qty=qty,
-        side="BUY",
-        order_type=ORDER_TYPE_LIMIT,
-        price=entry_price,
-    )
+    if is_dry_run:
+        order = _dry_run_fill(trade_plan)
+        logger.info("[%s] DRY RUN — assumed fill: %s x%d @ %.2f", AGENT_NAME, symbol, qty, entry_price)
+    else:
+        order = _broker.place_order(
+            symbol=symbol,
+            qty=qty,
+            side="BUY",
+            order_type=ORDER_TYPE_LIMIT,
+            price=entry_price,
+        )
+        slippage_bps = (order["slippage"] / entry_price) * 10000
+        logger.info(
+            "[%s] LIVE order %s filled: %s x%d @ %.2f (slippage: %.1f bps)",
+            AGENT_NAME, order["order_id"], symbol, qty, order["fill_price"], slippage_bps,
+        )
 
     fill_price = order["fill_price"]
-    slippage_inr = order["slippage"] * qty
-    slippage_bps = (order["slippage"] / entry_price) * 10000
+    slippage_bps = (order["slippage"] / entry_price) * 10000 if not is_dry_run else 0.0
 
     position = {
         "symbol": symbol,
         "qty": qty,
         "entry_price": fill_price,
+        "assumed_entry": entry_price,   # always the plan price (for dry-run comparison)
         "stop": trade_plan["stop"],
         "target1": trade_plan["target1"],
         "target2": trade_plan["target2"],
         "order_id": order["order_id"],
         "status": "OPEN",
         "unrealized_pnl": 0.0,
+        "dry_run": is_dry_run,
     }
 
     msg = create_message(
@@ -60,6 +88,7 @@ def execution_agent(state: TradingState) -> dict[str, Any]:
             "fill_price": fill_price,
             "qty": qty,
             "slippage_bps": round(slippage_bps, 2),
+            "dry_run": is_dry_run,
         },
     )
     entry_audit = audit_entry(agent=AGENT_NAME, action="order_placed", data={
@@ -68,14 +97,10 @@ def execution_agent(state: TradingState) -> dict[str, Any]:
         "qty": qty,
         "requested_price": entry_price,
         "fill_price": fill_price,
-        "slippage_inr": round(slippage_inr, 2),
         "slippage_bps": round(slippage_bps, 2),
+        "dry_run": is_dry_run,
+        "mode": "DRY_RUN" if is_dry_run else "LIVE",
     })
-
-    logger.info(
-        "[%s] Order %s filled: %s x%d @ %.2f (slippage: %.1f bps)",
-        AGENT_NAME, order["order_id"], symbol, qty, fill_price, slippage_bps,
-    )
 
     return {
         "orders": [order],

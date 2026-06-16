@@ -51,6 +51,9 @@ class TradingState(TypedDict):
     audit_trail: Annotated[list[dict], operator.add]
     errors: Annotated[list[str], operator.add]
 
+    # Dry-run mode flag (propagated from config)
+    dry_run: bool
+
     # Post-market / learning
     trade_outcomes: list[dict]
     agent_scores: dict[str, float]
@@ -61,6 +64,7 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
     cfg = load_config()
     sv = cfg.strategy_version
     today = date.today().isoformat()
+    dry_run = cfg.trading_policy.dry_run
     return TradingState(
         run_date=today,
         session_type=session_type,
@@ -84,6 +88,7 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
         daily_pnl=0.0,
         daily_trades_taken=0,
         consecutive_losses=0,
+        dry_run=dry_run,
         messages=[],
         audit_trail=[],
         errors=[],

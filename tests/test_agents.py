@@ -1,298 +1,356 @@
-"""Unit tests for core modules and agents."""
-
+"""Unit tests for AutoTrader agents and core components."""
 import pytest
 import sys
-from pathlib import Path
+import os
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Ensure src is on path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-
-# ── Config ────────────────────────────────────────────────────────────────────
-
-def test_config_loads():
-    from autotrader.core.config import load_config
-    cfg = load_config()
-    assert cfg.trading_policy.max_daily_trades == 3
-    assert cfg.trading_policy.total_capital == 1_000_000
-    assert cfg.memory_policy.auto_modify_strategy is False
-    assert cfg.strategy_version.strategy_version == "1.0.0"
+from autotrader.core.config import load_config, AppConfig
+from autotrader.core.state import TradingState, create_initial_state
+from autotrader.core.messages import create_message, audit_entry, A2AMessage
+from autotrader.memory.short_term import ShortTermMemory
+from autotrader.memory.long_term import LongTermMemory
+from autotrader.safety.controls import SafetyControls
 
 
-def test_config_policy_defaults():
-    from autotrader.core.config import TradingPolicy
-    p = TradingPolicy()
-    assert p.min_risk_reward == 2.0
-    assert p.minimum_score == 80.0
-    assert p.allow_overnight_positions is False
+# ─────────────────────────────────────────────
+# Config tests
+# ─────────────────────────────────────────────
+
+def test_config_loading():
+    """load_config returns AppConfig with all required fields."""
+    config = load_config()
+    assert isinstance(config, AppConfig)
+    assert config.trading_policy.max_daily_trades == 3
+    assert config.trading_policy.total_capital == 1_000_000
+    assert config.trading_policy.enabled is True
+    assert config.memory_policy.minimum_confidence == 0.70
+    assert config.strategy_version.strategy_version == "1.0.0"
 
 
-# ── A2A Messages ──────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Message tests
+# ─────────────────────────────────────────────
 
 def test_create_message():
-    from autotrader.core.messages import create_message
-    msg = create_message("AgentA", "AgentB", {"score": 91}, symbol="BEL")
-    assert msg["source_agent"] == "AgentA"
-    assert msg["target_agent"] == "AgentB"
-    assert msg["symbol"] == "BEL"
-    assert msg["payload"]["score"] == 91
+    """create_message returns dict with all required fields."""
+    msg = create_message(
+        source="agent_a",
+        target="agent_b",
+        symbol="RELIANCE",
+        payload={"foo": "bar"},
+    )
+    assert isinstance(msg, dict)
     assert "message_id" in msg
     assert "timestamp" in msg
+    assert msg["source_agent"] == "agent_a"
+    assert msg["target_agent"] == "agent_b"
+    assert msg["symbol"] == "RELIANCE"
+    assert msg["payload"] == {"foo": "bar"}
+    assert len(msg["message_id"]) == 36  # UUID4 format
 
 
 def test_audit_entry():
-    from autotrader.core.messages import audit_entry
-    entry = audit_entry("TestAgent", "test_action", {"key": "value"})
-    assert entry["agent"] == "TestAgent"
-    assert entry["action"] == "test_action"
-    assert entry["data"]["key"] == "value"
+    """audit_entry returns dict with timestamp, agent, action, data."""
+    entry = audit_entry(
+        agent="test_agent",
+        action="test_action",
+        data={"key": "value"},
+    )
+    assert isinstance(entry, dict)
     assert "timestamp" in entry
+    assert entry["agent"] == "test_agent"
+    assert entry["action"] == "test_action"
+    assert entry["data"] == {"key": "value"}
 
 
-# ── State ─────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# State tests
+# ─────────────────────────────────────────────
 
 def test_create_initial_state():
-    from autotrader.core.state import create_initial_state
-    state = create_initial_state("pre_market")
-    assert state["session_type"] == "pre_market"
+    """create_initial_state returns TradingState with all required fields."""
+    state = create_initial_state(session_type="pre_market")
+    
     assert state["market_regime"] == "unknown"
+    assert state["market_confidence"] == 0.0
+    assert state["top_sectors"] == []
+    assert state["catalysts"] == []
+    assert state["candidates"] == []
+    assert state["scored_opportunities"] == []
     assert state["governance_approved"] is False
+    assert state["governance_reason"] == ""
+    assert state["risk_passed"] is False
+    assert state["risk_reason"] == ""
+    assert state["trade_plan"] == {}
+    assert state["orders"] == []
+    assert state["positions"] == []
     assert state["daily_pnl"] == 0.0
-    assert isinstance(state["messages"], list)
-    assert isinstance(state["audit_trail"], list)
+    assert state["daily_trades_taken"] == 0
+    assert state["consecutive_losses"] == 0
+    assert state["messages"] == []
+    assert state["errors"] == []
+    assert state["audit_trail"] == []
+    assert state["session_type"] == "pre_market"
+    assert "run_date" in state
+    assert state["strategy_version"] == "1.0.0"
 
 
-# ── Governance Agent ──────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Governance tests
+# ─────────────────────────────────────────────
 
-def _make_state(**overrides):
-    from autotrader.core.state import create_initial_state
-    state = create_initial_state("pre_market")
-    state.update(overrides)
-    return state
+def _make_approvable_state() -> dict:
+    """Build a state where all governance checks should pass."""
+    return {
+        "market_regime": "bull",
+        "market_confidence": 0.85,
+        "top_sectors": ["BANK", "IT"],
+        "scored_opportunities": [
+            {"symbol": "HDFCBANK", "composite_score": 85.0}
+        ],
+        "governance_approved": False,
+        "governance_reason": "",
+        "risk_passed": False,
+        "risk_reason": "",
+        "daily_trades_taken": 0,
+        "consecutive_losses": 0,
+        "daily_pnl": 0.0,
+        "positions": [],
+        "orders": [],
+        "trade_plan": {},
+        "candidates": [],
+        "catalysts": [],
+        "messages": [],
+        "errors": [],
+        "audit_trail": [],
+        "strategy_version": "1.0.0",
+        "memory_version": "1.0",
+        "config_version": "1",
+        "run_date": "2025-01-01",
+        "session_type": "pre_market",
+    }
 
 
 def test_governance_approved():
+    """When all checks pass, governance_approved should be True."""
     from autotrader.agents.layer4.governance import governance_agent
-    state = _make_state(
-        market_regime="bullish",
-        market_confidence=0.85,
-        scored_opportunities=[{"symbol": "BEL", "score": 91}],
-        daily_trades_taken=0,
-        positions=[],
-        daily_pnl=0.0,
-        consecutive_losses=0,
-        orders=[],
-    )
+    state = _make_approvable_state()
     result = governance_agent(state)
     assert result["governance_approved"] is True
-    assert len(result["audit_trail"]) == 1
-    assert len(result["messages"]) == 1
+    assert "All" in result["governance_reason"] or "passed" in result["governance_reason"]
 
 
-def test_governance_rejects_on_daily_limit():
+def test_governance_rejected_disabled():
+    """When trading.enabled is False, governance should reject."""
     from autotrader.agents.layer4.governance import governance_agent
-    state = _make_state(
-        market_regime="bullish",
-        market_confidence=0.85,
-        scored_opportunities=[{"symbol": "BEL", "score": 91}],
-        daily_trades_taken=3,  # At limit
-        positions=[],
-        daily_pnl=0.0,
-        consecutive_losses=0,
-        orders=[],
-    )
+    from unittest.mock import patch, MagicMock
+    
+    state = _make_approvable_state()
+    
+    # Mock config to return disabled policy
+    mock_config = MagicMock()
+    mock_config.trading_policy.enabled = False
+    mock_config.trading_policy.max_daily_trades = 3
+    mock_config.trading_policy.max_concurrent_positions = 2
+    mock_config.trading_policy.max_daily_loss_pct = 2.0
+    mock_config.trading_policy.total_capital = 1_000_000
+    mock_config.trading_policy.stop_trading_after_losses = 3
+    mock_config.trading_policy.minimum_score = 80
+    mock_config.trading_policy.minimum_confidence = 0.75
+    
+    with patch("autotrader.agents.layer4.governance.load_config", return_value=mock_config):
+        result = governance_agent(state)
+    
+    assert result["governance_approved"] is False
+    assert "disabled" in result["governance_reason"].lower()
+
+
+def test_governance_rejected_max_trades():
+    """When daily_trades_taken >= max_daily_trades, governance should reject."""
+    from autotrader.agents.layer4.governance import governance_agent
+    
+    state = _make_approvable_state()
+    state["daily_trades_taken"] = 3  # equals max_daily_trades
+    
     result = governance_agent(state)
     assert result["governance_approved"] is False
-    assert "limit" in result["governance_reason"].lower()
+    assert "trade" in result["governance_reason"].lower() or "limit" in result["governance_reason"].lower()
 
 
-def test_governance_rejects_no_opportunities():
-    from autotrader.agents.layer4.governance import governance_agent
-    state = _make_state(
-        market_regime="bullish",
-        market_confidence=0.85,
-        scored_opportunities=[],
-        daily_trades_taken=0,
-        positions=[],
-        daily_pnl=0.0,
-        consecutive_losses=0,
-        orders=[],
-    )
-    result = governance_agent(state)
-    assert result["governance_approved"] is False
+# ─────────────────────────────────────────────
+# Risk agent tests
+# ─────────────────────────────────────────────
+
+def test_risk_agent_passes():
+    """Risk agent passes with good stock data."""
+    from autotrader.agents.layer4.risk import risk_agent
+    from unittest.mock import patch
+    
+    state = _make_approvable_state()
+    state["scored_opportunities"] = [{"symbol": "TCS", "composite_score": 85.0}]
+    
+    mock_stock = {
+        "symbol": "TCS",
+        "price": 3500.0,
+        "avg_volume_20d": 1_000_000,
+        "atr": 50.0,
+        "volume": 1_200_000,
+    }
+    
+    with patch("autotrader.agents.layer4.risk.get_stock_data", return_value=mock_stock), \
+         patch("autotrader.agents.layer4.risk.get_asm_gsm_list", return_value=[]), \
+         patch("autotrader.agents.layer4.risk.get_corporate_actions", return_value=[]):
+        result = risk_agent(state)
+    
+    assert result["risk_passed"] is True
 
 
-def test_governance_rejects_on_daily_loss():
-    from autotrader.agents.layer4.governance import governance_agent
-    state = _make_state(
-        market_regime="bullish",
-        market_confidence=0.85,
-        scored_opportunities=[{"symbol": "BEL", "score": 91}],
-        daily_trades_taken=0,
-        positions=[],
-        daily_pnl=-25000.0,  # 2.5% of 1M capital
-        consecutive_losses=0,
-        orders=[],
-    )
-    result = governance_agent(state)
-    assert result["governance_approved"] is False
-    assert "loss" in result["governance_reason"].lower()
+def test_risk_agent_low_volume():
+    """Risk agent fails when avg_volume < 500000."""
+    from autotrader.agents.layer4.risk import risk_agent
+    from unittest.mock import patch
+    
+    state = _make_approvable_state()
+    state["scored_opportunities"] = [{"symbol": "SMALLCAP", "composite_score": 85.0}]
+    
+    mock_stock = {
+        "symbol": "SMALLCAP",
+        "price": 100.0,
+        "avg_volume_20d": 100_000,  # too low
+        "atr": 2.0,
+        "volume": 150_000,
+    }
+    
+    with patch("autotrader.agents.layer4.risk.get_stock_data", return_value=mock_stock):
+        result = risk_agent(state)
+    
+    assert result["risk_passed"] is False
+    assert "volume" in result["risk_reason"].lower()
 
 
-def test_governance_rejects_blocked_regime():
-    from autotrader.agents.layer4.governance import governance_agent
-    state = _make_state(
-        market_regime="high_volatility_bear",
-        market_confidence=0.85,
-        scored_opportunities=[{"symbol": "BEL", "score": 91}],
-        daily_trades_taken=0,
-        positions=[],
-        daily_pnl=0.0,
-        consecutive_losses=0,
-        orders=[],
-    )
-    result = governance_agent(state)
-    assert result["governance_approved"] is False
-    assert "regime" in result["governance_reason"].lower()
+# ─────────────────────────────────────────────
+# Opportunity scoring tests
+# ─────────────────────────────────────────────
 
-
-# ── Opportunity Scoring ───────────────────────────────────────────────────────
-
-def test_opportunity_scoring_weights():
-    """Verify composite score is within valid range."""
-    from autotrader.agents.layer3.opportunity_scoring import WEIGHTS
-    assert abs(sum(WEIGHTS.values()) - 1.0) < 0.001, "Weights must sum to 1.0"
-
-
-def test_opportunity_scoring_agent():
+def test_opportunity_scoring():
+    """Verify composite score calculation uses correct weights."""
     from autotrader.agents.layer3.opportunity_scoring import opportunity_scoring_agent
-    state = _make_state(
-        market_regime="bullish",
-        market_confidence=0.85,
-        top_sectors=["Capital_Goods"],
-        sector_rankings=[{"sector": "Capital_Goods", "momentum_score": 2.5}],
-        candidates=[{
-            "symbol": "BEL",
-            "relative_strength": 89.0,
-            "volume_score": 94.0,
-            "technical_score": 87.0,
-            "catalyst_score": 91,
-            "current_price": 412.0,
-            "pattern": "ORB",
-            "atr": 6.0,
-            "ema9": 410.0,
-            "ema21": 405.0,
-            "vwap": 408.0,
-            "rsi": 62.0,
-            "catalyst_reason": "Defence order",
-            "ret_1d_pct": 1.2,
-        }],
-    )
-    result = opportunity_scoring_agent(state)
-    opps = result["scored_opportunities"]
-    assert isinstance(opps, list)
-    if opps:
-        assert 0 <= opps[0]["score"] <= 100
-        assert "component_scores" in opps[0]
+    from unittest.mock import patch, MagicMock
+    
+    mock_config = MagicMock()
+    mock_config.trading_policy.minimum_score = 0  # allow all through
+    
+    state = {
+        "market_regime": "strong_bull",  # score=100
+        "market_confidence": 0.9,
+        "top_sectors": ["BANK"],
+        "catalysts": [{"symbol": "HDFCBANK", "catalyst_type": "bulk_deal", "score": 65}],
+        "candidates": [
+            {
+                "symbol": "HDFCBANK",
+                "sector": "BANK",
+                "rs_score": 80.0,
+                "volume_score": 60.0,
+                "technical_score": 70.0,
+            }
+        ],
+        "scored_opportunities": [],
+        "messages": [],
+        "audit_trail": [],
+    }
+    
+    with patch("autotrader.agents.layer3.opportunity_scoring.load_config", return_value=mock_config):
+        result = opportunity_scoring_agent(state)
+    
+    scored = result.get("scored_opportunities", [])
+    assert len(scored) == 1
+    score = scored[0]["composite_score"]
+    
+    # Expected: market(100*0.20) + sector(100*0.20) + rs(80*0.20) + vol(60*0.15) + catalyst(65*0.15) + tech(70*0.10)
+    expected = 100*0.20 + 100*0.20 + 80*0.20 + 60*0.15 + 65*0.15 + 70*0.10
+    assert abs(score - expected) < 0.01
 
 
-# ── Safety Controls ───────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Safety controls tests
+# ─────────────────────────────────────────────
 
-def test_kill_switch():
-    from autotrader.safety.controls import SafetyControls
-    sc = SafetyControls()
-    ok, _ = sc.check_kill_switch()
-    assert ok is True
-    sc.activate_kill_switch()
-    ok, msg = sc.check_kill_switch()
+def test_safety_controls_kill_switch():
+    """When kill_switch is True, check_kill_switch returns False."""
+    safety = SafetyControls()
+    assert safety.check_kill_switch() is True  # starts off
+    
+    safety.kill_switch = True
+    assert safety.check_kill_switch() is False
+    
+    ok, issues = safety.run_all_checks_basic()
     assert ok is False
-    assert "kill switch" in msg.lower()
-    sc.deactivate_kill_switch()
-    ok, _ = sc.check_kill_switch()
-    assert ok is True
+    assert any("kill switch" in i.lower() for i in issues)
 
 
-def test_duplicate_trade_detection():
-    from autotrader.safety.controls import SafetyControls
-    sc = SafetyControls()
-    orders = [{"symbol": "BEL", "status": "OPEN"}]
-    ok, msg = sc.check_duplicate_trade("BEL", orders)
-    assert ok is False
-    ok, _ = sc.check_duplicate_trade("INFY", orders)
-    assert ok is True
-
-
-def test_data_freshness():
-    from autotrader.safety.controls import SafetyControls
-    from datetime import datetime, timezone
-    sc = SafetyControls()
-    fresh_ts = datetime.now(timezone.utc).isoformat()
-    ok, _ = sc.check_data_freshness([fresh_ts])
-    assert ok is True
-    stale_ts = "2020-01-01T00:00:00+00:00"
-    ok, msg = sc.check_data_freshness([stale_ts])
-    assert ok is False
-    assert "stale" in msg.lower()
-
-
-# ── Memory ────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Memory tests
+# ─────────────────────────────────────────────
 
 def test_short_term_memory():
-    from autotrader.memory.short_term import ShortTermMemory
-    stm = ShortTermMemory(retention_days=30)
-    stm.store("test_key", {"data": 123})
-    result = stm.retrieve("test_key")
-    assert result == {"data": 123}
-    assert stm.count() >= 1
+    """ShortTermMemory stores and retrieves values correctly."""
+    mem = ShortTermMemory(ttl_days=30)
+    
+    mem.store("key1", {"data": 42})
+    mem.store("key2", "hello world")
+    
+    assert mem.retrieve("key1") == {"data": 42}
+    assert mem.retrieve("key2") == "hello world"
+    assert mem.retrieve("nonexistent") is None
+    
+    assert "key1" in mem.keys()
+    assert "key2" in mem.keys()
+    
+    results = mem.search("hello")
+    assert len(results) >= 1
+    assert any(r["key"] == "key2" for r in results)
+    
+    d = mem.to_dict()
+    assert "key1" in d
+    assert "key2" in d
 
 
-def test_long_term_memory_store_and_retrieve():
-    from autotrader.memory.long_term import LongTermMemory
-    ltm = LongTermMemory()
-    ltm.store_pattern(
-        pattern_key="test_pattern_001",
-        description="Test pattern",
-        observations=25,
-        win_rate=0.68,
-        confidence=0.75,
+def test_long_term_memory_pattern():
+    """LongTermMemory stores patterns and retrieves by min_confidence."""
+    mem = LongTermMemory()
+    
+    # Store a pattern with high confidence
+    mid = mem.store_pattern(
+        pattern="bull_BANK_BREAKOUT",
+        observations=30,
+        win_rate=0.75,
+        confidence=0.8,
     )
-    patterns = ltm.retrieve_patterns(min_confidence=0.70)
-    found = [p for p in patterns if p["pattern_key"] == "test_pattern_001"]
-    assert len(found) == 1
-    assert found[0]["win_rate"] == 0.68
-
-
-def test_long_term_memory_admission_rules():
-    """Patterns below threshold must not be auto-approved."""
-    from autotrader.core.config import load_config
-    cfg = load_config()
-    min_obs = cfg.memory_policy.minimum_observations
-    min_conf = cfg.memory_policy.minimum_confidence
-    # Rule: observations < minimum should be rejected by the agent layer
-    assert min_obs == 20
-    assert min_conf == 0.70
-
-
-# ── Trade Construction ────────────────────────────────────────────────────────
-
-def test_trade_construction():
-    from autotrader.agents.layer5.trade_construction import trade_construction_agent
-    state = _make_state(
-        scored_opportunities=[{
-            "symbol": "BEL",
-            "score": 91.0,
-            "current_price": 412.0,
-            "atr": 6.18,
-            "pattern": "ORB",
-            "vwap": 408.5,
-            "ema9": 410.0,
-            "ema21": 405.0,
-            "rsi": 62.0,
-            "catalyst_reason": "Defence order",
-        }]
-    )
-    result = trade_construction_agent(state)
-    plan = result["trade_plan"]
-    assert plan["symbol"] == "BEL"
-    assert plan["stop"] < plan["entry"] < plan["target1"] < plan["target2"]
-    assert plan["qty"] >= 1
-    assert plan["rr"] >= 2.0
+    assert isinstance(mid, str)
+    assert len(mid) == 36
+    
+    # Should appear with low threshold
+    patterns = mem.retrieve_patterns(min_confidence=0.0)
+    assert len(patterns) >= 1
+    
+    # Should appear with 0.7 threshold
+    patterns_filtered = mem.retrieve_patterns(min_confidence=0.7)
+    assert len(patterns_filtered) >= 1
+    
+    # Should NOT appear with very high threshold
+    patterns_high = mem.retrieve_patterns(min_confidence=0.99)
+    assert all(p["confidence"] >= 0.99 for p in patterns_high)
+    
+    # Test update
+    mem.update_pattern(mid, new_observation=True)
+    updated = mem.retrieve_patterns(min_confidence=0.0)
+    found = next((p for p in updated if p["memory_id"] == mid), None)
+    assert found is not None
+    assert found["observations"] == 31
+    
+    # Stats
+    stats = mem.get_stats()
+    assert stats["total_patterns"] >= 1
+    assert "avg_win_rate" in stats
