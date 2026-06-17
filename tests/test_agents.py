@@ -417,3 +417,68 @@ def test_execution_suppresses_duplicate():
     second = execution_agent(state2)
     assert "orders" not in second
     assert any(t["tag"] == tag for t in first["orders"])
+
+
+# ─────────────────────────────────────────────
+# Memory: embeddings, scoring, factory
+# ─────────────────────────────────────────────
+def test_local_embedder_is_deterministic_and_normalised():
+    from autotrader.memory.embeddings import LocalHashEmbedder
+    import math
+    e = LocalHashEmbedder(dim=64)
+    v1 = e.embed("high volume sector leader")
+    v2 = e.embed("high volume sector leader")
+    assert v1 == v2
+    assert abs(math.sqrt(sum(x * x for x in v1)) - 1.0) < 1e-6
+
+
+def test_retrieval_scoring_components():
+    from autotrader.memory.scoring import cosine, recency_decay, composite_score
+    from datetime import datetime, timezone
+    assert cosine([1, 0], [1, 0]) == 1.0
+    assert cosine([1, 0], [0, 1]) == 0.0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    assert recency_decay(now_iso, 30.0) > 0.99
+    # Weights normalise even if they don't sum to 1
+    assert 0.0 <= composite_score(1.0, 1.0, 1.0, 2, 2, 2) <= 1.0
+
+
+def test_long_term_search_scored_ranks_relevant_first():
+    from autotrader.memory.long_term import LongTermMemory
+    mem = LongTermMemory()
+    mem.store_pattern(pattern="volume_breakout_banking", description="High volume breakout in banking stocks",
+                      observations=20, win_rate=0.7, confidence=0.8)
+    mem.store_pattern(pattern="pharma_reversal", description="Mean reversion in pharma names",
+                      observations=15, win_rate=0.6, confidence=0.75)
+    results = mem.search_scored("banking volume breakout", top_k=2)
+    assert results
+    assert results[0]["pattern_key"] == "volume_breakout_banking"
+    assert "retrieval_score" in results[0]
+    assert "embedding" not in results[0]  # embeddings stripped from output
+
+
+def test_short_term_search_scored():
+    from autotrader.memory.short_term import ShortTermMemory
+    stm = ShortTermMemory()
+    stm.store("regime_2026", {"regime": "bullish", "vix": 12})
+    stm.store("trade_BEL", {"symbol": "BEL", "pnl": 1200})
+    hits = stm.search_scored("BEL trade outcome", top_k=1)
+    assert hits and hits[0]["key"] == "trade_BEL"
+
+
+def test_memory_factory_defaults_to_in_memory():
+    from autotrader.memory import get_long_term_memory, get_short_term_memory
+    from autotrader.memory.long_term import LongTermMemory
+    from autotrader.memory.short_term import ShortTermMemory
+    assert isinstance(get_long_term_memory(), LongTermMemory)
+    assert isinstance(get_short_term_memory(), ShortTermMemory)
+
+
+def test_memory_factory_postgres_falls_back_without_dsn(monkeypatch):
+    from autotrader.core.config import load_config
+    from autotrader.memory import get_long_term_memory
+    from autotrader.memory.long_term import LongTermMemory
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    bcfg = load_config().memory_policy.backend.model_copy(update={"provider": "postgres"})
+    # No DSN -> graceful fallback to in-memory
+    assert isinstance(get_long_term_memory(bcfg), LongTermMemory)

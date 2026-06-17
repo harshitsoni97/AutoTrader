@@ -26,8 +26,20 @@ class LongTermMemory:
                     instance = super().__new__(cls)
                     instance._store: dict[str, dict] = {}  # memory_id → entry
                     instance._write_lock = threading.Lock()
+                    instance._embedder = None
                     cls._instance = instance
         return cls._instance
+
+    def _get_embedder(self):
+        """Lazily create a local embedder so semantic recall works with no config."""
+        if self._embedder is None:
+            from autotrader.memory.embeddings import LocalHashEmbedder
+            self._embedder = LocalHashEmbedder()
+        return self._embedder
+
+    def set_embedder(self, embedder) -> None:
+        """Inject a configured embedder (e.g. a cloud-native provider)."""
+        self._embedder = embedder
 
     def store_pattern(
         self,
@@ -42,20 +54,47 @@ class LongTermMemory:
         """Store a validated pattern. Returns memory_id (UUID4 string)."""
         key = pattern or pattern_key or "unknown"
         memory_id = str(uuid.uuid4())
+        desc = description or key
         entry = {
             "memory_id": memory_id,
             "pattern_key": key,
-            "description": description or key,
+            "description": desc,
             "observations": observations,
             "wins": int(win_rate * observations),
             "win_rate": round(win_rate, 4),
             "confidence": round(confidence, 4),
+            "embedding": self._get_embedder().embed(f"{key} {desc}"),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "last_updated": datetime.now(timezone.utc).isoformat(),
         }
         with self._write_lock:
             self._store[memory_id] = entry
         return memory_id
+
+    def search_scored(
+        self,
+        query: str,
+        top_k: int = 5,
+        w_recency: float = 0.34,
+        w_relevance: float = 0.33,
+        w_importance: float = 0.33,
+        half_life_days: float = 30.0,
+    ) -> list[dict]:
+        """FinMem-style retrieval: rank patterns by recency × relevance × importance."""
+        from autotrader.memory.scoring import composite_score, cosine, recency_decay
+
+        q_vec = self._get_embedder().embed(query)
+        with self._write_lock:
+            entries = list(self._store.values())
+        scored: list[dict] = []
+        for e in entries:
+            relevance = cosine(q_vec, e.get("embedding", []))
+            recency = recency_decay(e.get("last_updated", ""), half_life_days)
+            importance = e.get("confidence", 0.0)
+            score = composite_score(recency, relevance, importance, w_recency, w_relevance, w_importance)
+            scored.append({**{k: v for k, v in e.items() if k != "embedding"}, "retrieval_score": round(score, 4)})
+        scored.sort(key=lambda x: x["retrieval_score"], reverse=True)
+        return scored[:top_k]
 
     def get_pattern(self, pattern_key: str) -> dict | None:
         """Look up by pattern_key (not memory_id)."""

@@ -35,6 +35,23 @@ class TradingPolicy(BaseModel):
     dry_run: bool = True  # When True: no real orders sent; post-market compares assumed vs actual
 
 
+class MemoryBackendConfig(BaseModel):
+    # provider: memory | postgres  (postgres+pgvector keeps state AND vectors in ONE store)
+    provider: str = "memory"
+    dsn_env: str = "DATABASE_URL"          # env var holding the Postgres DSN
+    # Embedding provider — pick the one native to your chosen cloud ecosystem.
+    # local (no deps) | voyage | bedrock | vertex | azure_openai
+    embedding_provider: str = "local"
+    embedding_model: str = "local-hash"
+    embedding_dim: int = 256
+    # FinMem / Generative-Agents retrieval scoring: recency × relevance × importance
+    recency_weight: float = 0.34
+    relevance_weight: float = 0.33
+    importance_weight: float = 0.33
+    recency_half_life_days: float = 30.0
+    top_k: int = 5
+
+
 class MemoryPolicy(BaseModel):
     auto_modify_strategy: bool = False
     require_review: bool = True
@@ -42,6 +59,7 @@ class MemoryPolicy(BaseModel):
     minimum_confidence: float = 0.70
     short_term_retention_days: int = 30
     compression_frequency_days: int = 7
+    backend: MemoryBackendConfig = Field(default_factory=MemoryBackendConfig)
 
 
 class StrategyVersion(BaseModel):

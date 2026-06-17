@@ -8,12 +8,12 @@ from typing import Any
 from autotrader.core.config import load_config
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
-from autotrader.memory.long_term import LongTermMemory
+from autotrader.memory import get_long_term_memory
 
 logger = logging.getLogger(__name__)
 
 AGENT_NAME = "LongTermMemoryAgent"
-_ltm = LongTermMemory()
+_ltm = get_long_term_memory()
 
 
 def _extract_pattern_from_outcomes(state: TradingState) -> list[dict]:

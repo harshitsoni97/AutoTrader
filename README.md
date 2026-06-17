@@ -517,47 +517,91 @@ The daily report includes:
 
 ## Memory System
 
-### Short-Term Memory (`memory/short_term.py`)
+The memory layer follows the **FinMem / Generative-Agents** standard: every
+stored memory is embedded, and retrieval ranks candidates by a weighted blend of
+**recency × relevance × importance**. The backend is configurable and the whole
+thing can live in a **single ecosystem** — one Postgres + pgvector instance holds
+both relational state and vector embeddings, so you don't split across vendors.
 
-Rolling 30-day in-memory store (TTL-based). Used to hold intraday signals, candidate lists, and session context between graph runs.
+### Configurable backend (`memory_policy.yaml`)
 
-```python
-from autotrader.memory.short_term import ShortTermMemory
-
-mem = ShortTermMemory(retention_days=30)
-mem.store("session_2026-06-16", {"regime": "bullish", "top": "RELIANCE"})
-data = mem.retrieve("session_2026-06-16")
+```yaml
+memory_policy:
+  backend:
+    provider: "memory"            # memory | postgres
+    dsn_env: "DATABASE_URL"       # env var with the Postgres connection string
+    embedding_provider: "local"   # local | voyage | bedrock | vertex | azure_openai
+    embedding_dim: 256
+    recency_weight: 0.34          # FinMem-style retrieval weights
+    relevance_weight: 0.33
+    importance_weight: 0.33
+    recency_half_life_days: 30.0
+    top_k: 5
 ```
 
-In production, replace the in-memory dict with a Qdrant or Weaviate client for semantic search capability.
+| Provider | Store | Notes |
+|---|---|---|
+| `memory` | in-process dict | zero dependencies; default for dev/CI/dry-run |
+| `postgres` | Postgres + **pgvector** | **single ecosystem** — state *and* vectors in one DB (RDS / Cloud SQL / Azure DB) |
+
+> **Embeddings stay in your cloud too.** `local` is deterministic and needs no
+> network. Set `embedding_provider` to your cloud's native service (Bedrock on
+> AWS, Vertex on GCP, Azure OpenAI on Azure, or Voyage) so you never add a second
+> vendor. Any provider failure falls back to `local` automatically.
+
+Use the factory so the configured backend (and embedder) is selected for you:
+
+```python
+from autotrader.memory import get_long_term_memory, get_short_term_memory
+
+ltm = get_long_term_memory()   # postgres+pgvector if configured, else in-memory
+stm = get_short_term_memory()
+```
+
+### Short-Term Memory (`memory/short_term.py`)
+
+Rolling 30-day store (TTL-based) for intraday signals, candidate lists, and
+session context. `search_scored()` does recency × relevance retrieval over
+non-expired entries.
+
+```python
+stm.store("session_2026-06-16", {"regime": "bullish", "top": "RELIANCE"})
+hits = stm.search_scored("bullish regime reliance", top_k=3)
+```
 
 ### Long-Term Memory (`memory/long_term.py`)
 
-Singleton store for validated trading patterns with win-rate tracking. Patterns are admitted only after meeting strict criteria:
-- ≥ 20 observations
-- ≥ 0.70 confidence
-- Positive expectancy
+Validated trading patterns with win-rate tracking. Admitted only after meeting
+strict criteria (≥ 20 observations, ≥ 0.70 confidence, positive expectancy).
+`search_scored()` ranks by recency × relevance × importance (importance = pattern
+confidence).
 
 ```python
-from autotrader.memory.long_term import LongTermMemory
-
-ltm = LongTermMemory()
 mid = ltm.store_pattern(
-    pattern="high_volume_sector_leader",
-    observations=25,
-    win_rate=0.72,
-    confidence=0.75,
+    pattern="high_volume_sector_leader", observations=25, win_rate=0.72, confidence=0.75,
 )
 ltm.update_pattern(mid, new_observation=True, win=True)
-stats = ltm.get_stats()  # {"total_patterns": 1, "avg_win_rate": ..., "avg_confidence": ...}
+best = ltm.search_scored("high volume banking breakout", top_k=5)
 ```
 
-In production, replace the in-memory dict with a Postgres table (with pgvector) or Qdrant collection.
-
-**Memory lifecycle operations:**
+**Memory lifecycle operations** (both backends):
 - `expire_stale()` — removes patterns with <50% confidence not updated in 90 days
 - `merge_duplicates()` — consolidates entries with the same pattern key
 - `boost_high_performers()` — adds +0.02 confidence to patterns with win rate ≥ 65%
+
+### Enabling the single-ecosystem Postgres backend
+
+```bash
+# 1. A Postgres with pgvector (managed: RDS / Cloud SQL / Azure DB, or self-hosted)
+export DATABASE_URL="postgresql://user:pass@host:5432/autotrader"
+# 2. Flip the provider
+#    memory_policy.backend.provider: "postgres"
+# pip install pgvector  (psycopg2-binary already included)
+```
+
+Schema (`ltm_patterns`, `stm_entries`) and the `vector` extension are created
+automatically on first use. If the driver, DSN, or extension is missing, the
+system logs a warning and falls back to in-memory — it never fails to start.
 
 ---
 
@@ -730,8 +774,12 @@ autotrader/
 │   │   └── post_market.py        # 4-node post-market learning graph
 │   │
 │   ├── memory/
-│   │   ├── short_term.py         # 30-day rolling TTL store
-│   │   └── long_term.py          # Singleton validated-pattern store
+│   │   ├── __init__.py           # get_long_term_memory / get_short_term_memory factory
+│   │   ├── short_term.py         # 30-day rolling TTL store + scored retrieval
+│   │   ├── long_term.py          # Validated-pattern store + scored retrieval
+│   │   ├── postgres_store.py     # Postgres + pgvector backend (single ecosystem)
+│   │   ├── embeddings.py         # Pluggable embedders (local + cloud-native)
+│   │   └── scoring.py            # recency × relevance × importance scoring
 │   │
 │   ├── tools/
 │   │   ├── market_data.py        # yfinance wrappers + mock fallbacks
