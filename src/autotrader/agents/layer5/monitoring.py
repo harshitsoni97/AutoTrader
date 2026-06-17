@@ -10,6 +10,7 @@ from autotrader.core.config import load_config
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 from autotrader.tools.broker_tools import get_broker
+from autotrader.tools.notifications import get_notifier
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ def monitoring_agent(state: TradingState) -> dict[str, Any]:
 
     cfg = load_config()
     broker = get_broker(cfg.broker)
+    notifier = get_notifier(cfg.notifications)
 
     updated_positions: list[dict] = []
     new_orders: list[dict] = []
@@ -106,6 +108,10 @@ def monitoring_agent(state: TradingState) -> dict[str, Any]:
 
         pos["prev_price"] = current_price
         updated_positions.append(pos)
+
+    # Notify on each exit (stop / target) — never raises into the trading path.
+    for exit_info in exits:
+        notifier.notify_exit(exit_info)
 
     consecutive_losses = state.get("consecutive_losses", 0)
     if exits:

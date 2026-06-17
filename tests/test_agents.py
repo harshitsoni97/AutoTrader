@@ -482,3 +482,65 @@ def test_memory_factory_postgres_falls_back_without_dsn(monkeypatch):
     bcfg = load_config().memory_policy.backend.model_copy(update={"provider": "postgres"})
     # No DSN -> graceful fallback to in-memory
     assert isinstance(get_long_term_memory(bcfg), LongTermMemory)
+
+
+# ----------------------------- Notifications ----------------------------- #
+def test_notifier_disabled_is_noop():
+    from autotrader.core.config import NotificationConfig
+    from autotrader.tools.notifications import get_notifier
+    notifier = get_notifier(NotificationConfig(enabled=False))
+    assert notifier.send("subject", "body") == {}
+
+
+def test_notifier_unknown_channel_skipped():
+    from autotrader.core.config import NotificationConfig
+    from autotrader.tools.notifications import get_notifier
+    cfg = NotificationConfig(enabled=True, channels=["bogus"])
+    # Unknown channel is skipped, not sent — result contains no entry for it.
+    assert get_notifier(cfg).send("s", "b") == {}
+
+
+def test_notifier_telegram_without_credentials(monkeypatch):
+    from autotrader.core.config import NotificationConfig
+    from autotrader.tools.notifications import get_notifier
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    cfg = NotificationConfig(enabled=True, channels=["telegram"])
+    # Missing creds -> delivered False, never raises.
+    assert get_notifier(cfg).send("s", "b") == {"telegram": False}
+
+
+def test_notifier_telegram_sends_with_credentials(monkeypatch):
+    from autotrader.core.config import NotificationConfig
+    from autotrader.tools import notifications
+    from autotrader.tools.notifications import get_notifier
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "tok")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
+    calls = {}
+
+    def fake_post(url, **kwargs):
+        calls["url"] = url
+        calls["json"] = kwargs.get("json")
+        return True
+
+    monkeypatch.setattr(notifications, "_post", fake_post)
+    cfg = NotificationConfig(enabled=True, channels=["telegram"])
+    result = get_notifier(cfg).send("Entry", "BEL x10")
+    assert result == {"telegram": True}
+    assert "bottok" in calls["url"]
+    assert calls["json"]["chat_id"] == "123"
+
+
+def test_notifier_event_toggles(monkeypatch):
+    from autotrader.core.config import NotificationConfig
+    from autotrader.tools.notifications import get_notifier
+    cfg = NotificationConfig(enabled=True, channels=["telegram"], notify_on_order=False)
+    # notify_on_order disabled -> builder returns {} without touching channels.
+    assert get_notifier(cfg).notify_order({"symbol": "BEL", "status": "DRY_RUN_ASSUMED"}) == {}
+
+
+def test_config_loads_notifications():
+    from autotrader.core.config import load_config
+    cfg = load_config()
+    assert hasattr(cfg, "notifications")
+    assert isinstance(cfg.notifications.channels, list)

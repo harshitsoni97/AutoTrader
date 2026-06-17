@@ -56,14 +56,26 @@ def main():
         )
     except Exception as e:
         logger.error("pre_market_graph_failed", error=str(e))
+        from autotrader.tools.notifications import get_notifier
+        get_notifier(config.notifications).notify_error("pre_market", str(e))
         raise
-    
+
     # Generate and save report
     report = generate_daily_trade_report(result)
     report_filename = f"{result.get('run_date', 'unknown')}_pre_market_report.md"
     path = save_report(report, report_filename)
     logger.info("pre_market_report_saved", report_path=path)
-    
+
+    # Notify pre-market summary (regime + go/no-go) if configured.
+    from autotrader.tools.notifications import get_notifier
+    get_notifier(config.notifications).notify_daily_summary({
+        "run_date": result.get("run_date", "unknown"),
+        "dry_run": result.get("dry_run", config.trading_policy.dry_run),
+        "trades": result.get("daily_trades_taken", 0),
+        "daily_pnl": round(result.get("daily_pnl", 0.0), 2),
+        "regime": result.get("market_regime", "n/a"),
+    })
+
     print(f"\nPre-market analysis complete.")
     print(f"Market Regime: {result.get('market_regime')}")
     print(f"Governance Approved: {result.get('governance_approved')}")

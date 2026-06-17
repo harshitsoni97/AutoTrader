@@ -17,16 +17,17 @@ A production-grade, multi-agent intraday trading system for Indian equities (NSE
 9. [LLM Configuration](#llm-configuration)
 10. [API Keys and External Dependencies](#api-keys-and-external-dependencies)
 11. [Broker Connectors](#broker-connectors)
-12. [Running the Platform](#running-the-platform)
-13. [Dry-Run Mode](#dry-run-mode)
-14. [Output and Reports](#output-and-reports)
-15. [Memory System](#memory-system)
-16. [Safety Controls and Governance](#safety-controls-and-governance)
-17. [LLMOps — Tracing & Prompt Repository](#llmops--tracing--prompt-repository)
-18. [Testing](#testing)
-19. [Project Structure](#project-structure)
-20. [Extending the Platform](#extending-the-platform)
-21. [Disclaimer](#disclaimer)
+12. [Notifications](#notifications)
+13. [Running the Platform](#running-the-platform)
+14. [Dry-Run Mode](#dry-run-mode)
+15. [Output and Reports](#output-and-reports)
+16. [Memory System](#memory-system)
+17. [Safety Controls and Governance](#safety-controls-and-governance)
+18. [LLMOps — Tracing & Prompt Repository](#llmops--tracing--prompt-repository)
+19. [Testing](#testing)
+20. [Project Structure](#project-structure)
+21. [Extending the Platform](#extending-the-platform)
+22. [Disclaimer](#disclaimer)
 
 ---
 
@@ -286,6 +287,8 @@ config_version: "1"
 | `TRADING_ENABLED=false` | Emergency kill switch |
 | `DRY_RUN=true` | Force dry-run regardless of YAML |
 | `TOTAL_CAPITAL=500000` | Override capital (useful for paper trading) |
+| `NOTIFICATIONS_ENABLED=true` | Turn on outbound notifications |
+| `NOTIFICATION_CHANNELS=telegram,email` | Comma-separated channel list |
 
 ---
 
@@ -378,6 +381,26 @@ QDRANT_API_KEY=your_qdrant_key
 # --- Market Data ---
 # yfinance is free; NSE data is scraped from the public NSE website
 # No key needed for either by default
+
+# --- Notifications (optional; see Notifications section) ---
+# Enable in config/notifications.yaml (or NOTIFICATIONS_ENABLED=true) and pick channels.
+# Telegram:
+TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_CHAT_ID=123456789
+# Email (SMTP):
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@gmail.com
+SMTP_PASSWORD=app_password
+EMAIL_FROM=you@gmail.com
+EMAIL_TO=you@gmail.com,team@example.com
+# WhatsApp / SMS (Twilio):
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+TWILIO_FROM=whatsapp:+14155238886
+TWILIO_TO=whatsapp:+91XXXXXXXXXX
+# Slack:
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 ```
 
 **What each dependency is used for:**
@@ -425,6 +448,51 @@ broker:
 - **Idempotency** — the execution agent sends a deterministic `tag` per trade intent; a repeated run is deduped (both in `state["orders"]` and via the broker tag), preventing duplicate live orders. The monitoring agent records `exit_order_id` per position so a stop/target exit is never sent twice.
 
 > **Upstox note:** Upstox addresses instruments by `instrument_key` (e.g. `NSE_EQ|INE009A01021`). Provide a `{SYMBOL: instrument_key}` map at `config/upstox_instruments.json` (path configurable via `broker.upstox_instrument_map`).
+
+---
+
+## Notifications
+
+Get alerted on every entry, exit, daily summary, and pipeline error via
+**Telegram, Email (SMTP), WhatsApp/SMS (Twilio), or Slack** — works in both
+dry-run and live modes. Channels fan out, so you can enable several at once.
+
+Configure *what* and *where* in `config/notifications.yaml`; supply *secrets*
+only via environment variables (never in the YAML or any committed file):
+
+```yaml
+notifications:
+  enabled: true
+  channels: [telegram, email]      # any of: telegram | email | whatsapp | slack
+  notify_on_order: true            # entry placed (dry-run and live)
+  notify_on_exit: true             # stop / target exits
+  notify_on_daily_summary: true    # pre-market go/no-go + post-market P&L
+  notify_on_error: true            # pipeline failures
+  timeout_seconds: 10.0
+```
+
+| Channel | How it sends | Required env vars |
+|---|---|---|
+| `telegram` | Bot `sendMessage` API | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| `email` | SMTP (STARTTLS) | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, `EMAIL_TO` |
+| `whatsapp` | Twilio Messages API | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `TWILIO_TO` |
+| `slack` | Incoming webhook | `SLACK_WEBHOOK_URL` |
+
+**Where notifications fire:**
+
+| Event | Fired by | Toggle |
+|---|---|---|
+| Entry order placed (dry-run or live) | `ExecutionAgent` | `notify_on_order` |
+| Stop / target exit | `MonitoringAgent` | `notify_on_exit` |
+| Pre-market regime + go/no-go | `run_pre_market.py` | `notify_on_daily_summary` |
+| Post-market P&L summary | `run_post_market.py` | `notify_on_daily_summary` |
+| Pipeline error / crash | pre/post-market scripts | `notify_on_error` |
+
+> **Fail-safe by design:** notifications run through `src/autotrader/tools/notifications.py`.
+> A missing credential or a network failure logs a warning and is swallowed — a
+> notification can **never** raise into the trading path or fail an order. Quick
+> Telegram setup: message [@BotFather](https://t.me/BotFather) → `/newbot` → copy
+> the token; get your chat ID from [@userinfobot](https://t.me/userinfobot).
 
 ---
 

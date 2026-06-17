@@ -49,6 +49,8 @@ def main():
         logger.info("post_market_complete")
     except Exception as e:
         logger.error("post_market_graph_failed", error=str(e))
+        from autotrader.tools.notifications import get_notifier
+        get_notifier(config.notifications).notify_error("post_market", str(e))
         raise
     
     # Generate all reports
@@ -67,9 +69,20 @@ def main():
     save_report(gov_report, f"{run_date}_governance_report.md")
     
     logger.info("all_reports_saved", run_date=run_date)
+
+    # Notify daily summary (Telegram/email/WhatsApp/Slack if configured).
+    from autotrader.tools.notifications import get_notifier
+    get_notifier(config.notifications).notify_daily_summary({
+        "run_date": run_date,
+        "dry_run": result.get("dry_run", config.trading_policy.dry_run),
+        "trades": result.get("daily_trades_taken", 0),
+        "daily_pnl": round(result.get("daily_pnl", 0.0), 2),
+        "regime": result.get("market_regime", "n/a"),
+    })
+
     print(f"\nPost-market analysis complete for {run_date}.")
     print("Reports saved to reports/ directory.")
-    
+
     return result
 
 

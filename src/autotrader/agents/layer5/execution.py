@@ -15,6 +15,7 @@ from autotrader.core.config import load_config
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 from autotrader.tools.broker_tools import ORDER_TYPE_LIMIT, get_broker
+from autotrader.tools.notifications import get_notifier
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,9 @@ def execution_agent(state: TradingState) -> dict[str, Any]:
             "[%s] LIVE order %s filled: %s x%d @ %.2f (slippage: %.1f bps)",
             AGENT_NAME, order["order_id"], symbol, qty, order["fill_price"], slippage_bps,
         )
+
+    # Notify (entry placed) — never raises into the trading path.
+    get_notifier(cfg.notifications).notify_order(order)
 
     fill_price = order["fill_price"]
     slippage_bps = (order["slippage"] / entry_price) * 10000 if not is_dry_run else 0.0

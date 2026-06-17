@@ -93,6 +93,31 @@ class BrokerConfig(BaseModel):
     upstox_instrument_map: str = "upstox_instruments.json"
 
 
+class NotificationConfig(BaseModel):
+    """Outbound notifications for trades, exits, daily summaries and errors.
+
+    Credentials (bot tokens, SMTP passwords, Twilio auth) come ONLY from
+    environment variables — never from this config or any committed file.
+    Each channel degrades gracefully: an unconfigured or failing channel logs
+    a warning and never raises into the trading path.
+    """
+    enabled: bool = False
+    # Which channels to fan out to: telegram | email | whatsapp | slack
+    channels: List[str] = Field(default_factory=list)
+
+    # Event toggles
+    notify_on_order: bool = True       # entry order placed (dry-run and live)
+    notify_on_exit: bool = True        # stop / target exits
+    notify_on_daily_summary: bool = True
+    notify_on_error: bool = True
+
+    # Telegram — env: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    # Email (SMTP) — env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, EMAIL_TO
+    # WhatsApp/SMS (Twilio) — env: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, TWILIO_TO
+    # Slack — env: SLACK_WEBHOOK_URL
+    timeout_seconds: float = 10.0
+
+
 class LLMConfig(BaseModel):
     # Model identifiers — swap these in llm_config.yaml to change providers
     fast_model: str = "claude-haiku-4-5-20251001"
@@ -121,6 +146,7 @@ class PlatformConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     llmops: LLMOpsConfig = Field(default_factory=LLMOpsConfig)
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
+    notifications: NotificationConfig = Field(default_factory=NotificationConfig)
 
 
 # Alias used by tests and scripts
@@ -144,6 +170,7 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     llm_data = llm_cfg_file.get("llm", {})
     llmops_data = llm_cfg_file.get("llmops", {})
     broker_data = _load_yaml(root / "broker_config.yaml").get("broker", {})
+    notif_data = _load_yaml(root / "notifications.yaml").get("notifications", {})
 
     # Environment variable overrides for key settings
     if os.getenv("TRADING_ENABLED") is not None:
@@ -162,6 +189,11 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     # Broker env override
     if os.getenv("BROKER_PROVIDER"):
         broker_data["provider"] = os.getenv("BROKER_PROVIDER")
+    # Notification env overrides
+    if os.getenv("NOTIFICATIONS_ENABLED") is not None:
+        notif_data["enabled"] = os.getenv("NOTIFICATIONS_ENABLED", "false").lower() == "true"
+    if os.getenv("NOTIFICATION_CHANNELS"):
+        notif_data["channels"] = [c.strip() for c in os.getenv("NOTIFICATION_CHANNELS").split(",") if c.strip()]
 
     return PlatformConfig(
         trading_policy=TradingPolicy(**tp_data),
@@ -170,4 +202,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         llm=LLMConfig(**llm_data),
         llmops=LLMOpsConfig(**llmops_data),
         broker=BrokerConfig(**broker_data),
+        notifications=NotificationConfig(**notif_data),
     )
