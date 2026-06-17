@@ -79,6 +79,26 @@ def _generate_report(state: TradingState, stats: dict, llm_insights: dict | None
         f"- {r}" for r in insights.get("recommendations", [])
     )
 
+    # Deterministic fallback recommendations (computed outside the f-string
+    # because Python <3.12 forbids backslashes in f-string expression parts)
+    sizing_rec = (
+        "Increase position sizing if win rate > 60% persists for 5+ days"
+        if stats["win_rate"] > 60
+        else "Maintain conservative sizing — win rate below 60%"
+    )
+    stop_rec = (
+        "Review stop placement — losses suggest stops may be too tight"
+        if stats["losses"] > stats["wins"]
+        else "Stop placement appears effective"
+    )
+    fallback_recommendations = f"- {sizing_rec}\n- {stop_rec}"
+    recommendations_section = recommendations_bullets or fallback_recommendations
+
+    pattern_fallback = "\n".join(
+        f"- {o.get('symbol')}: Score={o.get('score', 0):.1f}" for o in scored[:5]
+    )
+    pattern_section = pattern_insights_bullets or pattern_fallback or "- None identified"
+
     report = f"""# Daily A2A Learning Report
 **Date:** {run_date}
 **Strategy Version:** {state.get('strategy_version', 'N/A')}
@@ -114,7 +134,7 @@ def _generate_report(state: TradingState, stats: dict, llm_insights: dict | None
 ---
 
 ## 5. Pattern Insights
-{pattern_insights_bullets or chr(10).join(f"- {o.get('symbol')}: Score={o.get('score', 0):.1f}" for o in scored[:5]) or "- None identified"}
+{pattern_section}
 
 ---
 
@@ -124,10 +144,7 @@ def _generate_report(state: TradingState, stats: dict, llm_insights: dict | None
 ---
 
 ## 7. Recommendations For Tomorrow
-{recommendations_bullets or (
-    "- " + ("Increase position sizing if win rate > 60% persists for 5+ days" if stats["win_rate"] > 60 else "Maintain conservative sizing — win rate below 60%") + "\n"
-    "- " + ("Review stop placement — losses suggest stops may be too tight" if stats["losses"] > stats["wins"] else "Stop placement appears effective")
-)}
+{recommendations_section}
 - Daily PnL: {state.get('daily_pnl', 0):.0f} INR | Consecutive Losses: {state.get('consecutive_losses', 0)}
 
 ---
