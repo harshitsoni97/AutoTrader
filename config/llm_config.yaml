@@ -1,27 +1,48 @@
 llm:
+  # ── Provider selection ───────────────────────────────────────────────────────
+  # Each tier (fast / analysis / report) can use a different provider.
+  # Supported providers and their required env vars:
+  #   anthropic    → ANTHROPIC_API_KEY
+  #   openai       → OPENAI_API_KEY
+  #   google       → GOOGLE_API_KEY
+  #   mistral      → MISTRAL_API_KEY
+  #   groq         → GROQ_API_KEY          (fastest free tier)
+  #   ollama       → none (local; set OLLAMA_BASE_URL if not localhost:11434)
+  #   azure_openai → AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT
+
   # ── Fast / low-cost model ────────────────────────────────────────────────────
-  # Used for high-frequency, token-light calls: catalyst interpretation,
-  # regime narrative enrichment.  Swap to any claude-haiku-* variant.
+  # High-frequency, token-light calls: catalyst interpretation, regime narrative.
+  fast_provider: "anthropic"
   fast_model: "claude-haiku-4-5-20251001"
   fast_max_tokens: 512
   fast_temperature: 0.1
+  # OpenAI alternative:  fast_provider: "openai"    fast_model: "gpt-4o-mini"
+  # Google alternative:  fast_provider: "google"    fast_model: "gemini-2.0-flash"
+  # Groq alternative:    fast_provider: "groq"      fast_model: "llama-3.1-8b-instant"
+  # Free/local:          fast_provider: "ollama"    fast_model: "llama3.2"
 
   # ── Analysis model ───────────────────────────────────────────────────────────
-  # Used for structured scoring review (top opportunities) where moderate
-  # reasoning improves signal quality without adding latency of full thinking.
+  # Structured scoring review — moderate reasoning, low latency.
+  analysis_provider: "anthropic"
   analysis_model: "claude-sonnet-4-6"
   analysis_max_tokens: 1024
   analysis_temperature: 0.2
+  # OpenAI alternative:  analysis_provider: "openai"   analysis_model: "gpt-4o"
+  # Google alternative:  analysis_provider: "google"   analysis_model: "gemini-2.5-pro"
+  # Groq alternative:    analysis_provider: "groq"     analysis_model: "llama-3.3-70b-versatile"
 
   # ── Report / synthesis model ─────────────────────────────────────────────────
   # Used once post-market for the daily learning report narrative.
-  # Extended thinking enabled via budget_tokens > 0; set to 0 to disable.
+  # report_thinking_budget: extended thinking token budget (Anthropic only).
+  # Set to 0 to disable thinking, or when using any non-Anthropic provider.
+  report_provider: "anthropic"
   report_model: "claude-sonnet-4-6"
   report_max_tokens: 4096
   report_thinking_budget: 2000
+  # OpenAI alternative:  report_provider: "openai"   report_model: "gpt-4o"   report_thinking_budget: 0
+  # Google alternative:  report_provider: "google"   report_model: "gemini-2.5-pro"  report_thinking_budget: 0
 
   # ── Feature flags ────────────────────────────────────────────────────────────
-  # Each flag independently enables/disables LLM enrichment for that agent.
   # Disable any flag to use the pure-deterministic fallback (no API call made).
   enable_catalyst_llm: true
   enable_regime_llm: true
@@ -29,11 +50,9 @@ llm:
   enable_report_llm: true
 
 # ── LLMOps ───────────────────────────────────────────────────────────────────
-# Tracing and prompt repository configuration.
 # backend: "langsmith" | "mlflow" | "none"
-#   langsmith — requires LANGCHAIN_API_KEY (or LANGSMITH_API_KEY) env var
-#   mlflow    — requires mlflow server running at mlflow_tracking_uri
-#   none      — disables all tracing (default)
+#   langsmith — requires LANGCHAIN_API_KEY env var
+#   mlflow    — requires mlflow server at mlflow_tracking_uri
 llmops:
   backend: "none"
   project_name: "autotrader"

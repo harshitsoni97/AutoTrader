@@ -119,17 +119,22 @@ class NotificationConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    # Model identifiers — swap these in llm_config.yaml to change providers
+    # Provider per tier — each tier can use a different vendor.
+    # Supported: anthropic | openai | google | mistral | groq | ollama | azure_openai
+    fast_provider: str = "anthropic"
     fast_model: str = "claude-haiku-4-5-20251001"
     fast_max_tokens: int = 512
     fast_temperature: float = 0.1
 
+    analysis_provider: str = "anthropic"
     analysis_model: str = "claude-sonnet-4-6"
     analysis_max_tokens: int = 1024
     analysis_temperature: float = 0.2
 
+    report_provider: str = "anthropic"
     report_model: str = "claude-sonnet-4-6"
     report_max_tokens: int = 4096
+    # Extended thinking: Anthropic only. Set to 0 to disable or when using other providers.
     report_thinking_budget: int = 2000
 
     # Feature flags — disable individually to fall back to deterministic logic

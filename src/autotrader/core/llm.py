@@ -1,8 +1,20 @@
 """LLM factory and Pydantic output schemas for structured agent enrichment.
 
 All public functions return a LangChain chat model bound to a Pydantic schema
-via `with_structured_output()`.  Every call site wraps invocations in
-try/except so deterministic logic always serves as a safe fallback.
+via `with_structured_output()`. The provider is selected per tier from
+llm_config.yaml — any tier can use a different vendor with no code changes.
+
+Supported providers (set via fast_provider / analysis_provider / report_provider):
+  anthropic    — ChatAnthropic       — env: ANTHROPIC_API_KEY
+  openai       — ChatOpenAI          — env: OPENAI_API_KEY
+  google       — ChatGoogleGenerativeAI — env: GOOGLE_API_KEY
+  mistral      — ChatMistralAI       — env: MISTRAL_API_KEY
+  groq         — ChatGroq            — env: GROQ_API_KEY
+  ollama       — ChatOllama          — no key (local server at OLLAMA_BASE_URL)
+  azure_openai — AzureChatOpenAI     — env: AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT
+
+Every call site wraps invocations in try/except so deterministic logic always
+serves as a safe fallback when a provider is unavailable or misconfigured.
 """
 
 from __future__ import annotations
@@ -17,14 +29,11 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pydantic output schemas — LLM MUST return these shapes (enforced by
-# with_structured_output).  A2A messages carry the enrichment as a nested
-# `llm_enrichment` key so existing downstream consumers are unaffected.
+# with_structured_output). A2A messages carry enrichment as `llm_enrichment`.
 # ---------------------------------------------------------------------------
-
 
 class CatalystEnrichment(BaseModel):
     """LLM assessment of a catalyst's market significance."""
-
     symbol: str = Field(description="NSE ticker symbol")
     adjusted_score: float = Field(
         ge=0, le=100,
@@ -46,7 +55,6 @@ class CatalystEnrichment(BaseModel):
 
 class RegimeEnrichment(BaseModel):
     """LLM synthesis of current market regime context."""
-
     regime_label: str = Field(
         description="Confirmed or refined regime label (e.g. 'bullish', 'risk_off', 'range_bound').",
     )
@@ -66,7 +74,6 @@ class RegimeEnrichment(BaseModel):
 
 class ScoringReview(BaseModel):
     """LLM holistic review of top scored opportunities."""
-
     top_symbol: str = Field(description="Symbol LLM agrees is the strongest setup today.")
     score_adjustment: float = Field(
         ge=-5.0, le=5.0,
@@ -86,7 +93,6 @@ class ScoringReview(BaseModel):
 
 class ReportInsights(BaseModel):
     """LLM-generated narrative sections for the daily learning report."""
-
     executive_summary: str = Field(
         max_length=500,
         description="3-4 sentence summary of today's session: regime, what happened, and key outcome.",
@@ -100,67 +106,136 @@ class ReportInsights(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# LLM factory helpers
+# Provider registry — maps provider name → (env_var_check, factory_fn)
 # ---------------------------------------------------------------------------
 
-def _is_available() -> bool:
-    return bool(os.getenv("ANTHROPIC_API_KEY"))
+# Each entry: (env_var_to_check_for_availability, lazy_factory)
+# Factories receive (model, temperature, max_tokens, **extra) and return a
+# LangChain BaseChatModel — all implement .invoke() and .with_structured_output()
+# identically, so the rest of the codebase is provider-agnostic.
+
+def _make_anthropic(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    from langchain_anthropic import ChatAnthropic
+    return ChatAnthropic(model=model, temperature=temperature, max_tokens=max_tokens, **kw)
 
 
-def _make_llm(model: str, temperature: float, max_tokens: int) -> Any:
-    from langchain_anthropic import ChatAnthropic  # lazy import
-    return ChatAnthropic(model=model, temperature=temperature, max_tokens=max_tokens)
+def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI(model=model, temperature=temperature, max_tokens=max_tokens, **kw)
 
+
+def _make_google(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    return ChatGoogleGenerativeAI(model=model, temperature=temperature, max_output_tokens=max_tokens, **kw)
+
+
+def _make_mistral(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    from langchain_mistralai import ChatMistralAI
+    return ChatMistralAI(model=model, temperature=temperature, max_tokens=max_tokens, **kw)
+
+
+def _make_groq(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    from langchain_groq import ChatGroq
+    return ChatGroq(model=model, temperature=temperature, max_tokens=max_tokens, **kw)
+
+
+def _make_ollama(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    from langchain_ollama import ChatOllama
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    return ChatOllama(model=model, temperature=temperature, num_predict=max_tokens, base_url=base_url, **kw)
+
+
+def _make_azure_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    from langchain_openai import AzureChatOpenAI
+    return AzureChatOpenAI(
+        azure_deployment=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
+        **kw,
+    )
+
+
+# provider_name → (required_env_var | None, factory_fn)
+# None env var = always available (e.g. Ollama runs locally)
+_PROVIDERS: dict[str, tuple[str | None, Any]] = {
+    "anthropic":    ("ANTHROPIC_API_KEY",    _make_anthropic),
+    "openai":       ("OPENAI_API_KEY",       _make_openai),
+    "google":       ("GOOGLE_API_KEY",       _make_google),
+    "mistral":      ("MISTRAL_API_KEY",      _make_mistral),
+    "groq":         ("GROQ_API_KEY",         _make_groq),
+    "ollama":       (None,                   _make_ollama),
+    "azure_openai": ("AZURE_OPENAI_API_KEY", _make_azure_openai),
+}
+
+
+def _is_available(provider: str) -> bool:
+    entry = _PROVIDERS.get(provider)
+    if entry is None:
+        logger.warning("Unknown LLM provider: %s", provider)
+        return False
+    env_var, _ = entry
+    if env_var is None:
+        return True  # local provider (Ollama)
+    return bool(os.getenv(env_var))
+
+
+def _make_llm(provider: str, model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    entry = _PROVIDERS.get(provider)
+    if entry is None:
+        raise ValueError(f"Unknown LLM provider: {provider!r}. Supported: {list(_PROVIDERS)}")
+    _, factory = entry
+    return factory(model, temperature, max_tokens, **kw)
+
+
+# ---------------------------------------------------------------------------
+# Public factory helpers — used by agents
+# ---------------------------------------------------------------------------
 
 def get_fast_llm(cfg: Any) -> Any | None:
     """Return a fast/cheap LLM instance, or None if unavailable."""
-    if not _is_available():
+    provider = getattr(cfg, "fast_provider", "anthropic")
+    if not _is_available(provider):
         return None
     try:
-        return _make_llm(
-            model=cfg.fast_model,
-            temperature=cfg.fast_temperature,
-            max_tokens=cfg.fast_max_tokens,
-        )
+        return _make_llm(provider, cfg.fast_model, cfg.fast_temperature, cfg.fast_max_tokens)
     except Exception as exc:
-        logger.warning("Could not initialise fast LLM: %s", exc)
+        logger.warning("Could not initialise fast LLM (%s): %s", provider, exc)
         return None
 
 
 def get_analysis_llm(cfg: Any) -> Any | None:
     """Return the analysis-tier LLM instance, or None if unavailable."""
-    if not _is_available():
+    provider = getattr(cfg, "analysis_provider", "anthropic")
+    if not _is_available(provider):
         return None
     try:
-        return _make_llm(
-            model=cfg.analysis_model,
-            temperature=cfg.analysis_temperature,
-            max_tokens=cfg.analysis_max_tokens,
-        )
+        return _make_llm(provider, cfg.analysis_model, cfg.analysis_temperature, cfg.analysis_max_tokens)
     except Exception as exc:
-        logger.warning("Could not initialise analysis LLM: %s", exc)
+        logger.warning("Could not initialise analysis LLM (%s): %s", provider, exc)
         return None
 
 
 def get_report_llm(cfg: Any) -> Any | None:
-    """Return the report-generation LLM, optionally with extended thinking."""
-    if not _is_available():
+    """Return the report-generation LLM, with extended thinking for Anthropic."""
+    provider = getattr(cfg, "report_provider", "anthropic")
+    if not _is_available(provider):
         return None
     try:
-        from langchain_anthropic import ChatAnthropic
-        kwargs: dict[str, Any] = {
-            "model": cfg.report_model,
-            "max_tokens": cfg.report_max_tokens,
-        }
-        budget = getattr(cfg, "report_thinking_budget", 0)
-        if budget > 0:
-            kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
-            kwargs["temperature"] = 1.0  # required for extended thinking
+        extra: dict[str, Any] = {}
+        # Extended thinking is an Anthropic-specific feature.
+        if provider == "anthropic":
+            budget = getattr(cfg, "report_thinking_budget", 0)
+            if budget > 0:
+                extra["thinking"] = {"type": "enabled", "budget_tokens": budget}
+                extra["temperature"] = 1.0  # required for extended thinking
+            else:
+                extra["temperature"] = 0.3
         else:
-            kwargs["temperature"] = 0.3
-        return ChatAnthropic(**kwargs)
+            extra["temperature"] = 0.3
+        return _make_llm(provider, cfg.report_model, 0.3, cfg.report_max_tokens, **extra)
     except Exception as exc:
-        logger.warning("Could not initialise report LLM: %s", exc)
+        logger.warning("Could not initialise report LLM (%s): %s", provider, exc)
         return None
 
 
