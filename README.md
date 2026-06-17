@@ -14,14 +14,18 @@ A production-grade, multi-agent intraday trading system for Indian equities (NSE
 6. [Quick Start](#quick-start)
 7. [Installation](#installation)
 8. [Configuration](#configuration)
-9. [API Keys and External Dependencies](#api-keys-and-external-dependencies)
-10. [Running the Platform](#running-the-platform)
-11. [Dry-Run Mode](#dry-run-mode)
-12. [Output and Reports](#output-and-reports)
-13. [Memory System](#memory-system)
-14. [Safety Controls and Governance](#safety-controls-and-governance)
-15. [Testing](#testing)
-16. [Project Structure](#project-structure)
+9. [LLM Configuration](#llm-configuration)
+10. [API Keys and External Dependencies](#api-keys-and-external-dependencies)
+11. [Running the Platform](#running-the-platform)
+12. [Dry-Run Mode](#dry-run-mode)
+13. [Output and Reports](#output-and-reports)
+14. [Memory System](#memory-system)
+15. [Safety Controls and Governance](#safety-controls-and-governance)
+16. [LLMOps — Tracing & Prompt Repository](#llmops--tracing--prompt-repository)
+17. [Testing](#testing)
+18. [Project Structure](#project-structure)
+19. [Extending the Platform](#extending-the-platform)
+20. [Disclaimer](#disclaimer)
 
 ---
 
@@ -347,6 +351,11 @@ Copy `.env.example` to `.env` and fill in all values before running live.
 # --- LLM (required for narrative report generation) ---
 ANTHROPIC_API_KEY=sk-ant-...
 
+# --- LLMOps tracing (optional; see LLMOps section) ---
+# LangSmith — set when llmops.backend = "langsmith"
+LANGCHAIN_API_KEY=ls__...
+# MLflow needs no key; point llmops.mlflow_tracking_uri at your server
+
 # --- Broker API (required for live trading) ---
 # Example: Zerodha Kite
 BROKER_API_KEY=your_kite_api_key
@@ -369,7 +378,8 @@ QDRANT_API_KEY=your_qdrant_key
 
 | Dependency | Used for | Required for dry-run? |
 |---|---|---|
-| Anthropic API | LLM narrative in daily reports | No |
+| Anthropic API | LLM enrichment + narrative in reports | No |
+| LangSmith / MLflow | LLM call tracing & prompt versioning | No (tracing off by default) |
 | Broker API (Kite/Upstox etc.) | Live order placement | No (MockBroker used) |
 | yfinance | Nifty, VIX, stock OHLCV data | Yes (falls back to mock data) |
 | NSE website | FII/DII, bulk deals, corporate actions, ASM/GSM | Yes (falls back to mock data) |
@@ -637,13 +647,18 @@ autotrader/
 ├── config/
 │   ├── trading_policy.yaml       # All trading constraints and limits
 │   ├── memory_policy.yaml        # Pattern admission and compression settings
-│   └── strategy_version.yaml    # Versioning for strategy and memory schemas
+│   ├── strategy_version.yaml     # Versioning for strategy and memory schemas
+│   ├── llm_config.yaml           # Model tiers, feature flags, llmops backend
+│   └── prompts.yaml              # Versioned prompt repository
 │
 ├── src/autotrader/
 │   ├── core/
 │   │   ├── config.py             # Pydantic config models + load_config()
 │   │   ├── state.py              # TradingState TypedDict + create_initial_state()
-│   │   └── messages.py           # A2AMessage model + create_message() + audit_entry()
+│   │   ├── messages.py           # A2AMessage model + create_message() + audit_entry()
+│   │   ├── llm.py                # LLM factories + Pydantic output schemas
+│   │   ├── prompts.py            # Prompt registry (get_prompt)
+│   │   └── tracing.py            # LangSmith/MLflow setup_tracing()
 │   │
 │   ├── agents/
 │   │   ├── layer1/               # Market Intelligence
