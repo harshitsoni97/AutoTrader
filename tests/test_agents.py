@@ -354,3 +354,66 @@ def test_long_term_memory_pattern():
     stats = mem.get_stats()
     assert stats["total_patterns"] >= 1
     assert "avg_win_rate" in stats
+
+
+# ─────────────────────────────────────────────
+# Broker connector tests
+# ─────────────────────────────────────────────
+def test_broker_factory_selects_mock():
+    from autotrader.tools.broker_tools import get_broker, MockBroker
+    cfg = load_config()
+    broker = get_broker(cfg.broker)
+    assert isinstance(broker, MockBroker)
+    assert broker.is_connected()
+
+
+def test_broker_factory_unknown_provider_raises():
+    from autotrader.tools.broker_tools import get_broker
+    cfg = load_config()
+    bad = cfg.broker.model_copy(update={"provider": "robinhood"})
+    with pytest.raises(ValueError):
+        get_broker(bad)
+
+
+def test_live_brokers_fail_closed_without_credentials(monkeypatch):
+    from autotrader.tools.broker_tools import get_broker, BrokerAuthError
+    cfg = load_config()
+    for var in ("KITE_API_KEY", "KITE_ACCESS_TOKEN", "UPSTOX_ACCESS_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    for provider in ("zerodha", "upstox"):
+        bad = cfg.broker.model_copy(update={"provider": provider})
+        with pytest.raises(BrokerAuthError):
+            get_broker(bad)
+
+
+def test_mock_broker_idempotent_tag():
+    from autotrader.tools.broker_tools import MockBroker
+    b = MockBroker()
+    o1 = b.place_order("INFY", 10, "BUY", tag="AT-dedup")
+    o2 = b.place_order("INFY", 10, "BUY", tag="AT-dedup")
+    assert o1["order_id"] == o2["order_id"]
+    assert len(b.get_orders()) == 1
+
+
+def test_order_schema_validation():
+    from autotrader.tools.broker_tools import Order, MockBroker
+    order = MockBroker().place_order("BEL", 5, "BUY")
+    # Round-trips through the canonical Pydantic schema
+    assert Order(**order).symbol == "BEL"
+
+
+# ─────────────────────────────────────────────
+# Execution idempotency tests
+# ─────────────────────────────────────────────
+def test_execution_suppresses_duplicate():
+    from autotrader.agents.layer5.execution import execution_agent
+    plan = {"symbol": "BEL", "qty": 10, "entry": 412.0, "stop": 400.0, "target1": 420.0, "target2": 430.0}
+    state = {"trade_plan": plan, "dry_run": True, "run_date": "2026-06-17", "orders": []}
+    first = execution_agent(state)
+    assert len(first["orders"]) == 1
+    tag = first["orders"][0]["tag"]
+    # Replay with the order already present -> no new order
+    state2 = dict(state, orders=first["orders"])
+    second = execution_agent(state2)
+    assert "orders" not in second
+    assert any(t["tag"] == tag for t in first["orders"])

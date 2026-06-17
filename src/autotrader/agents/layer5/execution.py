@@ -7,23 +7,36 @@ learning compares this assumed fill against the actual end-of-day price.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Any
 
+from autotrader.core.config import load_config
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
-from autotrader.tools.broker_tools import MockBroker, ORDER_TYPE_LIMIT
+from autotrader.tools.broker_tools import ORDER_TYPE_LIMIT, get_broker
 
 logger = logging.getLogger(__name__)
 
 AGENT_NAME = "ExecutionAgent"
-_broker = MockBroker()
 
 
-def _dry_run_fill(trade_plan: dict) -> dict:
+def _idempotency_key(symbol: str, run_date: str, entry: float, qty: int) -> str:
+    """Stable tag identifying this exact trade intent for the session.
+
+    A repeated execution run for the same plan produces the same key, so the
+    order is never placed twice (deduped against existing orders and via the
+    broker tag).
+    """
+    raw = f"{symbol}|{run_date}|{entry:.2f}|{qty}"
+    digest = hashlib.sha1(raw.encode()).hexdigest()[:10]
+    return f"AT-{digest}"
+
+
+def _dry_run_fill(trade_plan: dict, tag: str) -> dict:
     """Simulate a fill at plan entry price with zero slippage."""
     return {
-        "order_id": f"DRY-{trade_plan['symbol'][:3].upper()}-000",
+        "order_id": f"DRY-{tag}",
         "symbol": trade_plan["symbol"],
         "qty": trade_plan["qty"],
         "side": "BUY",
@@ -32,6 +45,7 @@ def _dry_run_fill(trade_plan: dict) -> dict:
         "fill_price": trade_plan["entry"],
         "slippage": 0.0,
         "status": "DRY_RUN_ASSUMED",
+        "tag": tag,
     }
 
 
@@ -45,17 +59,31 @@ def execution_agent(state: TradingState) -> dict[str, Any]:
     qty = trade_plan["qty"]
     entry_price = trade_plan["entry"]
     is_dry_run = state.get("dry_run", True)
+    run_date = state.get("run_date", "")
+
+    tag = _idempotency_key(symbol, run_date, entry_price, qty)
+
+    # Idempotency guard: if an order with this tag already exists in state, skip.
+    for existing in state.get("orders", []):
+        if existing.get("tag") == tag:
+            logger.warning("[%s] Duplicate execution suppressed for tag=%s", AGENT_NAME, tag)
+            dup_entry = audit_entry(agent=AGENT_NAME, action="duplicate_suppressed", data={"tag": tag, "symbol": symbol})
+            return {"audit_trail": [dup_entry]}
+
+    cfg = load_config()
 
     if is_dry_run:
-        order = _dry_run_fill(trade_plan)
+        order = _dry_run_fill(trade_plan, tag)
         logger.info("[%s] DRY RUN — assumed fill: %s x%d @ %.2f", AGENT_NAME, symbol, qty, entry_price)
     else:
-        order = _broker.place_order(
+        broker = get_broker(cfg.broker)
+        order = broker.place_order(
             symbol=symbol,
             qty=qty,
             side="BUY",
             order_type=ORDER_TYPE_LIMIT,
             price=entry_price,
+            tag=tag,
         )
         slippage_bps = (order["slippage"] / entry_price) * 10000
         logger.info(

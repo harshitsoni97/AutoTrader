@@ -16,16 +16,17 @@ A production-grade, multi-agent intraday trading system for Indian equities (NSE
 8. [Configuration](#configuration)
 9. [LLM Configuration](#llm-configuration)
 10. [API Keys and External Dependencies](#api-keys-and-external-dependencies)
-11. [Running the Platform](#running-the-platform)
-12. [Dry-Run Mode](#dry-run-mode)
-13. [Output and Reports](#output-and-reports)
-14. [Memory System](#memory-system)
-15. [Safety Controls and Governance](#safety-controls-and-governance)
-16. [LLMOps — Tracing & Prompt Repository](#llmops--tracing--prompt-repository)
-17. [Testing](#testing)
-18. [Project Structure](#project-structure)
-19. [Extending the Platform](#extending-the-platform)
-20. [Disclaimer](#disclaimer)
+11. [Broker Connectors](#broker-connectors)
+12. [Running the Platform](#running-the-platform)
+13. [Dry-Run Mode](#dry-run-mode)
+14. [Output and Reports](#output-and-reports)
+15. [Memory System](#memory-system)
+16. [Safety Controls and Governance](#safety-controls-and-governance)
+17. [LLMOps — Tracing & Prompt Repository](#llmops--tracing--prompt-repository)
+18. [Testing](#testing)
+19. [Project Structure](#project-structure)
+20. [Extending the Platform](#extending-the-platform)
+21. [Disclaimer](#disclaimer)
 
 ---
 
@@ -357,10 +358,15 @@ LANGCHAIN_API_KEY=ls__...
 # MLflow needs no key; point llmops.mlflow_tracking_uri at your server
 
 # --- Broker API (required for live trading) ---
-# Example: Zerodha Kite
-BROKER_API_KEY=your_kite_api_key
-BROKER_API_SECRET=your_kite_api_secret
-BROKER_ACCESS_TOKEN=your_kite_access_token
+# Select the provider in config/broker_config.yaml (broker.provider) or via:
+# BROKER_PROVIDER=mock | zerodha | upstox
+#
+# Zerodha (Kite Connect v3):
+KITE_API_KEY=your_kite_api_key
+KITE_ACCESS_TOKEN=your_kite_access_token
+#
+# Upstox (API v2):
+UPSTOX_ACCESS_TOKEN=your_upstox_access_token
 
 # --- Database (optional; for production LTM persistence) ---
 DATABASE_URL=postgresql://user:password@localhost:5432/autotrader
@@ -380,13 +386,45 @@ QDRANT_API_KEY=your_qdrant_key
 |---|---|---|
 | Anthropic API | LLM enrichment + narrative in reports | No |
 | LangSmith / MLflow | LLM call tracing & prompt versioning | No (tracing off by default) |
-| Broker API (Kite/Upstox etc.) | Live order placement | No (MockBroker used) |
+| Zerodha Kite / Upstox | Live order placement (see Broker Connectors) | No (MockBroker used) |
 | yfinance | Nifty, VIX, stock OHLCV data | Yes (falls back to mock data) |
 | NSE website | FII/DII, bulk deals, corporate actions, ASM/GSM | Yes (falls back to mock data) |
 | PostgreSQL | Production long-term memory persistence | No (in-memory store used) |
 | Qdrant | Semantic search over short-term memory | No (in-memory store used) |
 
 > **Network not available?** Every data tool has a deterministic mock fallback. The graph will run end-to-end with synthetic data — useful for testing and CI environments.
+
+---
+
+## Broker Connectors
+
+The platform is broker-agnostic: every connector implements `BrokerInterface` in `src/autotrader/tools/broker_tools.py`. Select the active broker in `config/broker_config.yaml` (or via `BROKER_PROVIDER`):
+
+| Provider | Class | API | Credentials (env) |
+|---|---|---|---|
+| `mock` | `MockBroker` | none — simulated fills | none |
+| `zerodha` | `ZerodhaBroker` | [Kite Connect v3](https://kite.trade/docs/connect/v3/) | `KITE_API_KEY`, `KITE_ACCESS_TOKEN` |
+| `upstox` | `UpstoxBroker` | [Upstox API v2](https://upstox.com/developer/api-documentation/) | `UPSTOX_ACCESS_TOKEN` |
+
+```yaml
+# config/broker_config.yaml
+broker:
+  provider: "zerodha"     # mock | zerodha | upstox
+  exchange: "NSE"
+  product: "MIS"          # intraday; mapped per-broker (Upstox: MIS->I)
+  timeout_seconds: 10.0
+  max_retries: 3
+  circuit_breaker_threshold: 5
+  circuit_breaker_cooldown_seconds: 60.0
+```
+
+**Production-grade behaviour built into every live connector:**
+- **Resilient HTTP** — per-call timeout, exponential-backoff retry, and a circuit breaker that trips after N consecutive failures and short-circuits during a cooldown window.
+- **Fail-closed auth** — a missing API key raises `BrokerAuthError` at construction; live trading never silently degrades to mock.
+- **Schema validation** — all order/quote responses are normalised through Pydantic models (`Order`, `Quote`), so a changed upstream field is caught rather than silently mis-read.
+- **Idempotency** — the execution agent sends a deterministic `tag` per trade intent; a repeated run is deduped (both in `state["orders"]` and via the broker tag), preventing duplicate live orders. The monitoring agent records `exit_order_id` per position so a stop/target exit is never sent twice.
+
+> **Upstox note:** Upstox addresses instruments by `instrument_key` (e.g. `NSE_EQ|INE009A01021`). Provide a `{SYMBOL: instrument_key}` map at `config/upstox_instruments.json` (path configurable via `broker.upstox_instrument_map`).
 
 ---
 
@@ -649,7 +687,9 @@ autotrader/
 │   ├── memory_policy.yaml        # Pattern admission and compression settings
 │   ├── strategy_version.yaml     # Versioning for strategy and memory schemas
 │   ├── llm_config.yaml           # Model tiers, feature flags, llmops backend
-│   └── prompts.yaml              # Versioned prompt repository
+│   ├── prompts.yaml              # Versioned prompt repository
+│   ├── broker_config.yaml        # Broker provider + resilience settings
+│   └── upstox_instruments.json   # Symbol -> Upstox instrument_key map
 │
 ├── src/autotrader/
 │   ├── core/
@@ -696,7 +736,7 @@ autotrader/
 │   ├── tools/
 │   │   ├── market_data.py        # yfinance wrappers + mock fallbacks
 │   │   ├── nse_tools.py          # NSE scraping (FII/DII, bulk deals, ASM/GSM)
-│   │   └── broker_tools.py       # BrokerInterface ABC + MockBroker
+│   │   └── broker_tools.py       # BrokerInterface + Mock/Zerodha/Upstox + get_broker()
 │   │
 │   ├── safety/
 │   │   └── controls.py           # Kill switch, holiday check, limit checks

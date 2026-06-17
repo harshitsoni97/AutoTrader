@@ -59,6 +59,22 @@ class LLMOpsConfig(BaseModel):
     tags: List[str] = Field(default_factory=lambda: ["nse", "intraday"])
 
 
+class BrokerConfig(BaseModel):
+    # provider: mock | zerodha | upstox
+    provider: str = "mock"
+    exchange: str = "NSE"            # NSE | BSE
+    product: str = "MIS"             # zerodha: MIS|CNC|NRML ; upstox maps MIS->I, CNC/NRML->D
+    variety: str = "regular"         # zerodha order variety
+    slippage_bps: float = 5.0        # mock broker only
+    timeout_seconds: float = 10.0
+    max_retries: int = 3
+    backoff_base_seconds: float = 1.0
+    circuit_breaker_threshold: int = 5
+    circuit_breaker_cooldown_seconds: float = 60.0
+    # Path (relative to config/) of a JSON map: {SYMBOL: instrument_key} — required for Upstox
+    upstox_instrument_map: str = "upstox_instruments.json"
+
+
 class LLMConfig(BaseModel):
     # Model identifiers — swap these in llm_config.yaml to change providers
     fast_model: str = "claude-haiku-4-5-20251001"
@@ -86,6 +102,7 @@ class PlatformConfig(BaseModel):
     strategy_version: StrategyVersion = Field(default_factory=StrategyVersion)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     llmops: LLMOpsConfig = Field(default_factory=LLMOpsConfig)
+    broker: BrokerConfig = Field(default_factory=BrokerConfig)
 
 
 # Alias used by tests and scripts
@@ -108,6 +125,7 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     llm_cfg_file = _load_yaml(root / "llm_config.yaml")
     llm_data = llm_cfg_file.get("llm", {})
     llmops_data = llm_cfg_file.get("llmops", {})
+    broker_data = _load_yaml(root / "broker_config.yaml").get("broker", {})
 
     # Environment variable overrides for key settings
     if os.getenv("TRADING_ENABLED") is not None:
@@ -123,6 +141,9 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         llm_data["analysis_model"] = os.getenv("LLM_ANALYSIS_MODEL")
     if os.getenv("LLM_REPORT_MODEL"):
         llm_data["report_model"] = os.getenv("LLM_REPORT_MODEL")
+    # Broker env override
+    if os.getenv("BROKER_PROVIDER"):
+        broker_data["provider"] = os.getenv("BROKER_PROVIDER")
 
     return PlatformConfig(
         trading_policy=TradingPolicy(**tp_data),
@@ -130,4 +151,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         strategy_version=StrategyVersion(**sv_data),
         llm=LLMConfig(**llm_data),
         llmops=LLMOpsConfig(**llmops_data),
+        broker=BrokerConfig(**broker_data),
     )

@@ -6,19 +6,24 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from autotrader.core.config import load_config
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
-from autotrader.tools.broker_tools import MockBroker
+from autotrader.tools.broker_tools import get_broker
 
 logger = logging.getLogger(__name__)
 
 AGENT_NAME = "MonitoringAgent"
-_broker = MockBroker()
 
 
-def _get_current_price(symbol: str) -> float:
-    quote = _broker.get_quote(symbol)
+def _get_current_price(broker, symbol: str) -> float:
+    quote = broker.get_quote(symbol)
     return quote.get("ltp", 0.0)
+
+
+def _exit_tag(symbol: str, leg: str, order_id: str) -> str:
+    """Idempotent tag for an exit leg so the same exit is never sent twice."""
+    return f"EX-{leg}-{order_id}"[:20]
 
 
 def monitoring_agent(state: TradingState) -> dict[str, Any]:
@@ -28,6 +33,9 @@ def monitoring_agent(state: TradingState) -> dict[str, Any]:
     if not positions:
         entry = audit_entry(agent=AGENT_NAME, action="no_positions", data={})
         return {"audit_trail": [entry]}
+
+    cfg = load_config()
+    broker = get_broker(cfg.broker)
 
     updated_positions: list[dict] = []
     new_orders: list[dict] = []
@@ -41,12 +49,13 @@ def monitoring_agent(state: TradingState) -> dict[str, Any]:
             continue
 
         symbol = pos["symbol"]
-        current_price = _get_current_price(symbol)
+        current_price = _get_current_price(broker, symbol)
         entry_price = pos["entry_price"]
         stop = pos["stop"]
         target1 = pos["target1"]
         target2 = pos["target2"]
         qty = pos["qty"]
+        pos_order_id = pos.get("order_id", symbol)
 
         unrealized_pnl = (current_price - entry_price) * qty
         pos = {**pos, "current_price": current_price, "unrealized_pnl": round(unrealized_pnl, 2)}
@@ -55,31 +64,39 @@ def monitoring_agent(state: TradingState) -> dict[str, Any]:
         if current_price == entry_price and pos.get("prev_price", 0) == current_price:
             alerts.append(f"{symbol}: Possible circuit filter — price frozen at {current_price}")
 
-        # Stop loss hit
-        if current_price <= stop:
-            exit_order = _broker.place_order(symbol, qty, "SELL", price=current_price)
+        # Stop loss hit — only fire a full exit once
+        if current_price <= stop and not pos.get("exit_order_id"):
+            exit_order = broker.place_order(
+                symbol, qty, "SELL", price=current_price, tag=_exit_tag(symbol, "STOP", pos_order_id)
+            )
             realized_pnl = (exit_order["fill_price"] - entry_price) * qty
             daily_pnl_delta += realized_pnl
-            pos = {**pos, "status": "STOPPED", "exit_price": exit_order["fill_price"], "realized_pnl": round(realized_pnl, 2)}
+            pos = {**pos, "status": "STOPPED", "exit_price": exit_order["fill_price"],
+                   "realized_pnl": round(realized_pnl, 2), "exit_order_id": exit_order["order_id"]}
             new_orders.append(exit_order)
             exits.append({"symbol": symbol, "reason": "STOP_HIT", "pnl": round(realized_pnl, 2)})
             alerts.append(f"{symbol}: Stop loss triggered at {current_price:.2f}, PnL: {realized_pnl:.0f}")
             logger.warning("[%s] STOP HIT: %s @ %.2f, PnL=%.0f", AGENT_NAME, symbol, current_price, realized_pnl)
 
-        # Target 2 hit — full exit
-        elif current_price >= target2:
-            exit_order = _broker.place_order(symbol, qty, "SELL", price=current_price)
+        # Target 2 hit — full exit, only once
+        elif current_price >= target2 and not pos.get("exit_order_id"):
+            exit_order = broker.place_order(
+                symbol, qty, "SELL", price=current_price, tag=_exit_tag(symbol, "TGT2", pos_order_id)
+            )
             realized_pnl = (exit_order["fill_price"] - entry_price) * qty
             daily_pnl_delta += realized_pnl
-            pos = {**pos, "status": "TARGET2_HIT", "exit_price": exit_order["fill_price"], "realized_pnl": round(realized_pnl, 2)}
+            pos = {**pos, "status": "TARGET2_HIT", "exit_price": exit_order["fill_price"],
+                   "realized_pnl": round(realized_pnl, 2), "exit_order_id": exit_order["order_id"]}
             new_orders.append(exit_order)
             exits.append({"symbol": symbol, "reason": "TARGET2", "pnl": round(realized_pnl, 2)})
             logger.info("[%s] TARGET2 HIT: %s @ %.2f, PnL=%.0f", AGENT_NAME, symbol, current_price, realized_pnl)
 
-        # Target 1 hit — partial exit (half position)
+        # Target 1 hit — partial exit (half position), only once
         elif current_price >= target1 and not pos.get("target1_hit"):
             half_qty = max(1, qty // 2)
-            exit_order = _broker.place_order(symbol, half_qty, "SELL", price=current_price)
+            exit_order = broker.place_order(
+                symbol, half_qty, "SELL", price=current_price, tag=_exit_tag(symbol, "TGT1", pos_order_id)
+            )
             realized_pnl = (exit_order["fill_price"] - entry_price) * half_qty
             daily_pnl_delta += realized_pnl
             pos = {**pos, "target1_hit": True, "qty": qty - half_qty}
