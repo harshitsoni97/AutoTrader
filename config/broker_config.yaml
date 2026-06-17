@@ -1,0 +1,35 @@
+broker:
+  # provider: mock | zerodha | upstox
+  #   mock     — simulated fills, no network, default for dry-run/CI
+  #   zerodha  — Kite Connect v3 (https://kite.trade/docs/connect/v3/)
+  #   upstox   — Upstox API v2 (https://upstox.com/developer/api-documentation/)
+  provider: "mock"
+
+  exchange: "NSE"          # NSE | BSE
+  product: "MIS"           # MIS (intraday) | CNC | NRML — mapped per-broker
+  variety: "regular"       # Zerodha order variety: regular | amo | co | iceberg
+
+  # Mock broker only
+  slippage_bps: 5.0
+
+  # Resilience — applied to all live HTTP calls
+  timeout_seconds: 10.0
+  max_retries: 3
+  backoff_base_seconds: 1.0
+  circuit_breaker_threshold: 5          # consecutive failures before tripping
+  circuit_breaker_cooldown_seconds: 60.0
+
+  # Upstox needs an instrument_key per symbol. Provide a JSON map at this path
+  # (relative to config/), e.g. {"INFY": "NSE_EQ|INE009A01021", ...}
+  upstox_instrument_map: "upstox_instruments.json"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Credentials are read from environment variables, never from this file:
+#
+#   Zerodha (Kite Connect v3):
+#     KITE_API_KEY        — your app's api_key
+#     KITE_ACCESS_TOKEN   — access_token from the daily login flow
+#
+#   Upstox (API v2):
+#     UPSTOX_ACCESS_TOKEN — access_token from the daily OAuth flow
+# ─────────────────────────────────────────────────────────────────────────────

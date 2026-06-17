@@ -1,0 +1,46 @@
+llm:
+  # ── Fast / low-cost model ────────────────────────────────────────────────────
+  # Used for high-frequency, token-light calls: catalyst interpretation,
+  # regime narrative enrichment.  Swap to any claude-haiku-* variant.
+  fast_model: "claude-haiku-4-5-20251001"
+  fast_max_tokens: 512
+  fast_temperature: 0.1
+
+  # ── Analysis model ───────────────────────────────────────────────────────────
+  # Used for structured scoring review (top opportunities) where moderate
+  # reasoning improves signal quality without adding latency of full thinking.
+  analysis_model: "claude-sonnet-4-6"
+  analysis_max_tokens: 1024
+  analysis_temperature: 0.2
+
+  # ── Report / synthesis model ─────────────────────────────────────────────────
+  # Used once post-market for the daily learning report narrative.
+  # Extended thinking enabled via budget_tokens > 0; set to 0 to disable.
+  report_model: "claude-sonnet-4-6"
+  report_max_tokens: 4096
+  report_thinking_budget: 2000
+
+  # ── Feature flags ────────────────────────────────────────────────────────────
+  # Each flag independently enables/disables LLM enrichment for that agent.
+  # Disable any flag to use the pure-deterministic fallback (no API call made).
+  enable_catalyst_llm: true
+  enable_regime_llm: true
+  enable_scoring_llm: true
+  enable_report_llm: true
+
+# ── LLMOps ───────────────────────────────────────────────────────────────────
+# Tracing and prompt repository configuration.
+# backend: "langsmith" | "mlflow" | "none"
+#   langsmith — requires LANGCHAIN_API_KEY (or LANGSMITH_API_KEY) env var
+#   mlflow    — requires mlflow server running at mlflow_tracking_uri
+#   none      — disables all tracing (default)
+llmops:
+  backend: "none"
+  project_name: "autotrader"
+  langsmith_endpoint: "https://api.smith.langchain.com"
+  mlflow_tracking_uri: "http://localhost:5000"
+  push_prompts_to_hub: false
+  tags:
+    - "nse"
+    - "intraday"
+    - "production"

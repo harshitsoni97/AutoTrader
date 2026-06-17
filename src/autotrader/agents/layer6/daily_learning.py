@@ -1,0 +1,246 @@
+"""Daily Learning Agent — analyses trade outcomes and generates A2A report."""
+
+from __future__ import annotations
+
+import logging
+import os
+from datetime import datetime, timezone
+from typing import Any
+
+from autotrader.core.config import load_config
+from autotrader.core.llm import ReportInsights, get_report_llm, structured
+from autotrader.core.messages import audit_entry, create_message
+from autotrader.core.prompts import get_prompt
+from autotrader.core.state import TradingState
+
+logger = logging.getLogger(__name__)
+
+AGENT_NAME = "DailyLearningAgent"
+
+
+def _compute_stats(outcomes: list[dict]) -> dict:
+    if not outcomes:
+        return {"count": 0, "wins": 0, "losses": 0, "win_rate": 0.0, "avg_pnl": 0.0, "avg_rr": 0.0}
+    wins = [o for o in outcomes if o.get("pnl", 0) > 0]
+    losses = [o for o in outcomes if o.get("pnl", 0) < 0]
+    avg_pnl = sum(o.get("pnl", 0) for o in outcomes) / len(outcomes)
+    rrs = [o.get("rr", 0) for o in outcomes if o.get("rr", 0) > 0]
+    return {
+        "count": len(outcomes),
+        "wins": len(wins),
+        "losses": len(losses),
+        "win_rate": round(len(wins) / len(outcomes) * 100, 1),
+        "avg_pnl": round(avg_pnl, 2),
+        "avg_rr": round(sum(rrs) / len(rrs), 2) if rrs else 0.0,
+    }
+
+
+def _generate_report(state: TradingState, stats: dict, llm_insights: dict | None = None) -> str:
+    run_date = state.get("run_date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    orders = state.get("orders", [])
+    scored = state.get("scored_opportunities", [])
+    outcomes = state.get("trade_outcomes", [])
+    positions = state.get("positions", [])
+    agent_scores = state.get("agent_scores", {})
+
+    trades_taken_section = "\n".join(
+        f"- {o.get('symbol', 'N/A')}: PnL={o.get('pnl', 0):.0f} | R/R={o.get('rr', 0):.2f} | Pattern={o.get('pattern', 'N/A')}"
+        for o in outcomes
+    ) or "- No trades executed today"
+
+    rejected_section = "\n".join(
+        f"- {o.get('symbol', 'N/A')}: Score={o.get('score', 0):.1f} (did not pass governance/risk)"
+        for o in scored[1:4]
+    ) or "- No rejected candidates above score threshold"
+
+    wins = [o for o in outcomes if o.get("pnl", 0) > 0]
+    worked_section = "\n".join(
+        f"- {w.get('symbol')}: +{w.get('pnl', 0):.0f} INR | Pattern: {w.get('pattern', 'N/A')}"
+        for w in wins
+    ) or "- No winning trades today"
+
+    losses_data = [o for o in outcomes if o.get("pnl", 0) < 0]
+    failed_section = "\n".join(
+        f"- {l.get('symbol')}: {l.get('pnl', 0):.0f} INR | Reason: {l.get('exit_reason', 'STOP')}"
+        for l in losses_data
+    ) or "- No losing trades today"
+
+    agent_perf_section = "\n".join(
+        f"- {agent}: {score:.1f}%"
+        for agent, score in agent_scores.items()
+    ) or "- Agent performance data not yet available"
+
+    insights = llm_insights or {}
+    executive_summary = insights.get("executive_summary", "")
+    pattern_insights_bullets = "\n".join(
+        f"- {p}" for p in insights.get("pattern_insights", [])
+    )
+    recommendations_bullets = "\n".join(
+        f"- {r}" for r in insights.get("recommendations", [])
+    )
+
+    # Deterministic fallback recommendations (computed outside the f-string
+    # because Python <3.12 forbids backslashes in f-string expression parts)
+    sizing_rec = (
+        "Increase position sizing if win rate > 60% persists for 5+ days"
+        if stats["win_rate"] > 60
+        else "Maintain conservative sizing — win rate below 60%"
+    )
+    stop_rec = (
+        "Review stop placement — losses suggest stops may be too tight"
+        if stats["losses"] > stats["wins"]
+        else "Stop placement appears effective"
+    )
+    fallback_recommendations = f"- {sizing_rec}\n- {stop_rec}"
+    recommendations_section = recommendations_bullets or fallback_recommendations
+
+    pattern_fallback = "\n".join(
+        f"- {o.get('symbol')}: Score={o.get('score', 0):.1f}" for o in scored[:5]
+    )
+    pattern_section = pattern_insights_bullets or pattern_fallback or "- None identified"
+
+    report = f"""# Daily A2A Learning Report
+**Date:** {run_date}
+**Strategy Version:** {state.get('strategy_version', 'N/A')}
+**Config Version:** {state.get('config_version', 'N/A')}
+
+---
+
+## Executive Summary
+{executive_summary or "_Not available — enable LLM report generation or add ANTHROPIC_API_KEY._"}
+
+---
+
+## 1. Trades Taken
+{trades_taken_section}
+
+**Summary:** {stats['count']} trades | Win Rate: {stats['win_rate']}% | Avg PnL: {stats['avg_pnl']:.0f} INR | Avg R/R: {stats['avg_rr']:.2f}
+
+---
+
+## 2. Trades Rejected
+{rejected_section}
+
+---
+
+## 3. What Worked
+{worked_section}
+
+---
+
+## 4. What Failed
+{failed_section}
+
+---
+
+## 5. Pattern Insights
+{pattern_section}
+
+---
+
+## 6. Agent Performance
+{agent_perf_section}
+
+---
+
+## 7. Recommendations For Tomorrow
+{recommendations_section}
+- Daily PnL: {state.get('daily_pnl', 0):.0f} INR | Consecutive Losses: {state.get('consecutive_losses', 0)}
+
+---
+_Generated by {AGENT_NAME} — this report is for review only and does not auto-modify strategy._
+"""
+    return report
+
+
+def _llm_generate_insights(state: TradingState, stats: dict, llm_cfg: Any) -> dict:
+    """Report LLM synthesizes narrative insights from today's session data."""
+    llm = get_report_llm(llm_cfg)
+    if llm is None:
+        return {}
+
+    chain = structured(llm, ReportInsights)
+    outcomes = state.get("trade_outcomes", [])
+    outcome_text = "; ".join(
+        f"{o.get('symbol')} pnl={o.get('pnl',0):.0f} pattern={o.get('pattern','N/A')}"
+        for o in outcomes
+    ) or "no trades executed"
+    prompt = get_prompt(
+        "report_insights",
+        run_date=state.get("run_date", "today"),
+        market_regime=state.get("market_regime", "unknown"),
+        market_confidence=state.get("market_confidence", 0.0),
+        trade_count=stats["count"],
+        win_rate=stats["win_rate"],
+        avg_pnl=stats["avg_pnl"],
+        avg_rr=stats["avg_rr"],
+        outcome_text=outcome_text,
+        agent_scores=state.get("agent_scores", {}),
+    )
+    try:
+        result: ReportInsights = chain.invoke(prompt)
+        return {
+            "executive_summary": result.executive_summary,
+            "pattern_insights": result.pattern_insights,
+            "recommendations": result.recommendations,
+        }
+    except Exception as exc:
+        logger.warning("[%s] LLM report insights failed: %s", AGENT_NAME, exc)
+        return {}
+
+
+def daily_learning_agent(state: TradingState) -> dict[str, Any]:
+    logger.info("[%s] Running post-market analysis", AGENT_NAME)
+
+    outcomes = state.get("trade_outcomes", [])
+
+    # Build outcomes from positions if not populated
+    if not outcomes:
+        outcomes = []
+        for pos in state.get("positions", []):
+            if pos.get("status") in ("STOPPED", "TARGET2_HIT", "TARGET1_HIT"):
+                pnl = pos.get("realized_pnl", 0)
+                outcomes.append({
+                    "symbol": pos.get("symbol"),
+                    "pnl": pnl,
+                    "pattern": pos.get("pattern", "N/A"),
+                    "exit_reason": pos.get("status", "N/A"),
+                    "rr": pos.get("rr", 0),
+                })
+
+    stats = _compute_stats(outcomes)
+
+    # Optional LLM narrative enrichment — replaces boilerplate sections when available
+    cfg = load_config()
+    llm_insights: dict = {}
+    if cfg.llm.enable_report_llm:
+        llm_insights = _llm_generate_insights(state, stats, cfg.llm)
+
+    report_content = _generate_report(state, stats, llm_insights)
+
+    # Save report to disk
+    run_date = state.get("run_date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    reports_dir = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+    report_path = os.path.join(reports_dir, f"{run_date}_daily_report.md")
+    try:
+        with open(report_path, "w") as f:
+            f.write(report_content)
+        logger.info("[%s] Report saved to %s", AGENT_NAME, report_path)
+    except OSError as e:
+        logger.warning("[%s] Could not save report: %s", AGENT_NAME, e)
+
+    msg = create_message(
+        source=AGENT_NAME, target="AgentEvaluator",
+        payload={"stats": stats, "report_path": report_path},
+    )
+    entry = audit_entry(agent=AGENT_NAME, action="daily_learning_complete", data={
+        "stats": stats, "report_path": report_path,
+    })
+
+    return {
+        "trade_outcomes": outcomes,
+        "learning_report_path": report_path,
+        "messages": [msg],
+        "audit_trail": [entry],
+    }

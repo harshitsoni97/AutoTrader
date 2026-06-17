@@ -1,0 +1,24 @@
+# Outbound notification settings.
+#
+# SECURITY: credentials (bot tokens, SMTP passwords, Twilio auth, webhook URLs)
+# are read ONLY from environment variables — NEVER put secrets in this file.
+# This file decides whether and where to notify; the environment supplies the keys.
+#
+# Required env vars per channel:
+#   telegram : TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+#   email    : SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, EMAIL_TO
+#   whatsapp : TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, TWILIO_TO
+#   slack    : SLACK_WEBHOOK_URL
+#
+# Env overrides: NOTIFICATIONS_ENABLED=true|false, NOTIFICATION_CHANNELS=telegram,email
+
+notifications:
+  enabled: false
+  channels: []            # e.g. [telegram] or [telegram, email]
+
+  notify_on_order: true           # entry order placed (dry-run and live)
+  notify_on_exit: true            # stop / target exits
+  notify_on_daily_summary: true   # post-market summary
+  notify_on_error: true           # pipeline errors
+
+  timeout_seconds: 10.0

@@ -1,0 +1,25 @@
+trading_policy:
+  enabled: true
+  max_daily_trades: 3
+  max_concurrent_positions: 2
+  max_capital_per_trade_pct: 10
+  max_sector_exposure_pct: 30
+  max_daily_loss_pct: 2
+  max_weekly_loss_pct: 5
+  max_monthly_loss_pct: 10
+  max_risk_per_trade_pct: 0.5
+  min_risk_reward: 2.0
+  minimum_score: 80
+  minimum_confidence: 0.75
+  minimum_volume_multiple: 2.0
+  stop_trading_after_losses: 3
+  allow_reentry_same_stock: false
+  allow_overnight_positions: false
+  total_capital: 1000000
+  blocked_regimes:
+    - "high_volatility_bear"
+    - "risk_off_extreme"
+
+# Dry-run mode: trades are selected, sized, and assumed filled at the plan price
+# but no real broker orders are placed. Post-market compares assumed vs actual prices.
+dry_run: true

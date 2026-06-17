@@ -1,0 +1,31 @@
+memory_policy:
+  auto_modify_strategy: false
+  require_review: true
+  minimum_observations: 20
+  minimum_confidence: 0.70
+  short_term_retention_days: 30
+  compression_frequency_days: 7
+
+  # ── Memory backend ───────────────────────────────────────────────────────────
+  # provider: memory | postgres
+  #   memory   — in-process dict (zero dependencies; default for dev/CI/dry-run)
+  #   postgres — Postgres + pgvector: ONE managed service holds relational state
+  #              AND vector embeddings, so the whole system stays in a single
+  #              cloud ecosystem (RDS / Cloud SQL / Azure DB — your choice).
+  backend:
+    provider: "memory"
+    dsn_env: "DATABASE_URL"          # env var with the Postgres connection string
+
+    # Embedding provider — choose the one native to your cloud so you don't add
+    # a second vendor. local needs no network/keys; the others call your cloud.
+    #   local | voyage | bedrock | vertex | azure_openai
+    embedding_provider: "local"
+    embedding_model: "local-hash"
+    embedding_dim: 256
+
+    # FinMem-style retrieval scoring weights (recency × relevance × importance)
+    recency_weight: 0.34
+    relevance_weight: 0.33
+    importance_weight: 0.33
+    recency_half_life_days: 30.0
+    top_k: 5
