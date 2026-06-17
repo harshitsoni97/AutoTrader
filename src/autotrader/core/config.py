@@ -50,6 +50,15 @@ class StrategyVersion(BaseModel):
     config_version: str = "1"
 
 
+class LLMOpsConfig(BaseModel):
+    backend: str = "none"            # langsmith | mlflow | none
+    project_name: str = "autotrader"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    mlflow_tracking_uri: str = "http://localhost:5000"
+    push_prompts_to_hub: bool = False
+    tags: List[str] = Field(default_factory=lambda: ["nse", "intraday"])
+
+
 class LLMConfig(BaseModel):
     # Model identifiers — swap these in llm_config.yaml to change providers
     fast_model: str = "claude-haiku-4-5-20251001"
@@ -76,6 +85,7 @@ class PlatformConfig(BaseModel):
     memory_policy: MemoryPolicy = Field(default_factory=MemoryPolicy)
     strategy_version: StrategyVersion = Field(default_factory=StrategyVersion)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    llmops: LLMOpsConfig = Field(default_factory=LLMOpsConfig)
 
 
 # Alias used by tests and scripts
@@ -95,7 +105,9 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     tp_data = _load_yaml(root / "trading_policy.yaml").get("trading_policy", {})
     mp_data = _load_yaml(root / "memory_policy.yaml").get("memory_policy", {})
     sv_data = _load_yaml(root / "strategy_version.yaml")
-    llm_data = _load_yaml(root / "llm_config.yaml").get("llm", {})
+    llm_cfg_file = _load_yaml(root / "llm_config.yaml")
+    llm_data = llm_cfg_file.get("llm", {})
+    llmops_data = llm_cfg_file.get("llmops", {})
 
     # Environment variable overrides for key settings
     if os.getenv("TRADING_ENABLED") is not None:
@@ -117,4 +129,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         memory_policy=MemoryPolicy(**mp_data),
         strategy_version=StrategyVersion(**sv_data),
         llm=LLMConfig(**llm_data),
+        llmops=LLMOpsConfig(**llmops_data),
     )

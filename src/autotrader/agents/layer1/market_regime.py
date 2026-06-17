@@ -8,6 +8,7 @@ from typing import Any
 from autotrader.core.config import load_config
 from autotrader.core.llm import RegimeEnrichment, get_fast_llm, structured
 from autotrader.core.messages import audit_entry, create_message
+from autotrader.core.prompts import get_prompt
 from autotrader.core.state import TradingState
 from autotrader.tools.market_data import (
     get_banknifty_data,
@@ -115,16 +116,14 @@ def _llm_enrich_regime(
         return regime, confidence, {}
 
     chain = structured(llm, RegimeEnrichment)
-    prompt = (
-        f"NSE pre-market data summary:\n"
-        f"  Nifty 5-day return: {nifty_pct:.2f}%\n"
-        f"  India VIX: {vix:.1f}\n"
-        f"  FII net flow (Cr): {fii_net:.0f}\n"
-        f"  Global markets (S&P500+Nasdaq avg): {global_pct:.2f}%\n"
-        f"  Quantitative regime: {regime} (confidence {confidence:.2f})\n\n"
-        "Confirm or refine the regime label and confidence for intraday NSE trading. "
-        "Stay within ±0.10 of the quantitative confidence. "
-        "Provide up to 3 key factors and a one-sentence trading implication."
+    prompt = get_prompt(
+        "regime_enrichment",
+        nifty_pct=nifty_pct,
+        vix=vix,
+        fii_net=fii_net,
+        global_pct=global_pct,
+        regime=regime,
+        confidence=confidence,
     )
     try:
         result: RegimeEnrichment = chain.invoke(prompt)

@@ -27,3 +27,20 @@ llm:
   enable_regime_llm: true
   enable_scoring_llm: true
   enable_report_llm: true
+
+# ── LLMOps ───────────────────────────────────────────────────────────────────
+# Tracing and prompt repository configuration.
+# backend: "langsmith" | "mlflow" | "none"
+#   langsmith — requires LANGCHAIN_API_KEY (or LANGSMITH_API_KEY) env var
+#   mlflow    — requires mlflow server running at mlflow_tracking_uri
+#   none      — disables all tracing (default)
+llmops:
+  backend: "none"
+  project_name: "autotrader"
+  langsmith_endpoint: "https://api.smith.langchain.com"
+  mlflow_tracking_uri: "http://localhost:5000"
+  push_prompts_to_hub: false
+  tags:
+    - "nse"
+    - "intraday"
+    - "production"

@@ -8,6 +8,7 @@ from typing import Any
 from autotrader.core.config import load_config
 from autotrader.core.llm import CatalystEnrichment, get_fast_llm, structured
 from autotrader.core.messages import audit_entry, create_message
+from autotrader.core.prompts import get_prompt
 from autotrader.core.state import TradingState
 from autotrader.tools.nse_tools import get_block_deals, get_bulk_deals, get_corporate_actions
 
@@ -88,13 +89,13 @@ def _llm_enrich_catalysts(
     chain = structured(llm, CatalystEnrichment)
 
     for i, cat in enumerate(enriched[:5]):
-        prompt = (
-            f"Market regime today: {market_regime}.\n"
-            f"NSE catalyst: symbol={cat['symbol']}, type={cat.get('catalyst_type','unknown')}, "
-            f"base_score={cat['catalyst_score']}, description='{cat.get('reason','')}'\n"
-            "Assess the market significance of this catalyst for an intraday momentum trade. "
-            "Return a CatalystEnrichment with adjusted_score (stay within ±10 of base), "
-            "impact (high/medium/low), narrative (1-2 sentences), and confidence (0-1)."
+        prompt = get_prompt(
+            "catalyst_enrichment",
+            market_regime=market_regime,
+            symbol=cat["symbol"],
+            catalyst_type=cat.get("catalyst_type", "unknown"),
+            base_score=cat["catalyst_score"],
+            description=cat.get("reason", ""),
         )
         try:
             result: CatalystEnrichment = chain.invoke(prompt)

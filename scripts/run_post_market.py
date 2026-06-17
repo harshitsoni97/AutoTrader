@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 import structlog
 from autotrader.graphs.post_market import build_post_market_graph
 from autotrader.core.config import load_config
+from autotrader.core.tracing import setup_tracing
 from autotrader.core.state import create_initial_state
 from autotrader.safety.controls import SafetyControls
 from autotrader.reports.generators import (
@@ -27,6 +28,7 @@ def main():
     try:
         config = load_config()
         logger.info("config_loaded")
+        setup_tracing(config)
     except Exception as e:
         logger.error("config_load_failed", error=str(e))
         sys.exit(1)

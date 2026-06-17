@@ -8,6 +8,7 @@ import structlog
 from autotrader.graphs.pre_market import build_pre_market_graph
 from autotrader.core.config import load_config
 from autotrader.core.state import create_initial_state
+from autotrader.core.tracing import setup_tracing
 from autotrader.safety.controls import SafetyControls
 from autotrader.reports.generators import generate_daily_trade_report, save_report
 
@@ -22,6 +23,7 @@ def main():
     try:
         config = load_config()
         logger.info("config_loaded", strategy_version=config.strategy_version.strategy_version)
+        setup_tracing(config)
     except Exception as e:
         logger.error("config_load_failed", error=str(e))
         sys.exit(1)

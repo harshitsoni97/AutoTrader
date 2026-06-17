@@ -1,0 +1,55 @@
+---
+# Prompt Repository — versioned templates for all LLM calls in AutoTrader.
+# Placeholders use Python .format() syntax: {variable_name}
+# Bump the version string when editing a prompt to track changes in LangSmith/MLflow.
+
+prompts:
+  catalyst_enrichment:
+    version: "v1"
+    description: "Assess intraday momentum significance of a single NSE catalyst."
+    template: |
+      Market regime today: {market_regime}.
+      NSE catalyst: symbol={symbol}, type={catalyst_type}, base_score={base_score}, description='{description}'
+      Assess the market significance of this catalyst for an intraday momentum trade.
+      Return a CatalystEnrichment with adjusted_score (stay within ±10 of base),
+      impact (high/medium/low), narrative (1-2 sentences), and confidence (0-1).
+
+  regime_enrichment:
+    version: "v1"
+    description: "Synthesise NSE market regime from quantitative signals."
+    template: |
+      NSE pre-market data summary:
+        Nifty 5-day return: {nifty_pct:.2f}%
+        India VIX: {vix:.1f}
+        FII net flow (Cr): {fii_net:.0f}
+        Global markets (S&P500+Nasdaq avg): {global_pct:.2f}%
+        Quantitative regime: {regime} (confidence {confidence:.2f})
+
+      Confirm or refine the regime label and confidence for intraday NSE trading.
+      Stay within ±0.10 of the quantitative confidence.
+      Provide up to 3 key factors and a one-sentence trading implication.
+
+  scoring_review:
+    version: "v1"
+    description: "Holistic LLM review of top-3 scored intraday candidates."
+    template: |
+      Market regime: {regime} (confidence {confidence:.2f})
+      Top 3 scored intraday candidates for NSE today:
+      {candidates_text}
+
+      Select the single best setup, provide a score adjustment (±5 max), brief rationale,
+      up to 2 concerns, and set pass_review=false only if the setup should be vetoed.
+
+  report_insights:
+    version: "v1"
+    description: "Post-market narrative synthesis for the daily learning report."
+    template: |
+      Post-market analysis for NSE intraday session {run_date}.
+      Market regime: {market_regime} (confidence {market_confidence:.2f})
+      Trade stats: {trade_count} trades, win_rate={win_rate}%, avg_pnl={avg_pnl:.0f} INR, avg_rr={avg_rr:.2f}
+      Outcomes: {outcome_text}
+      Agent scores: {agent_scores}
+
+      Generate an executive_summary (3-4 sentences), pattern_insights (2-4 bullets),
+      and recommendations (2-3 actionable items for tomorrow).
+      Do NOT suggest modifying strategy code or config values.

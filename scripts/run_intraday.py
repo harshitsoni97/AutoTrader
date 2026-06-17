@@ -9,6 +9,8 @@ import structlog
 from datetime import datetime, timezone, timedelta
 from autotrader.graphs.intraday import build_intraday_graph
 from autotrader.core.config import load_config
+from autotrader.core.tracing import setup_tracing
+
 from autotrader.core.state import create_initial_state
 from autotrader.safety.controls import SafetyControls
 
@@ -44,6 +46,7 @@ def main():
     try:
         config = load_config()
         logger.info("config_loaded")
+        setup_tracing(config)
     except Exception as e:
         logger.error("config_load_failed", error=str(e))
         sys.exit(1)

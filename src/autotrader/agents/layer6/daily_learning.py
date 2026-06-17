@@ -10,6 +10,7 @@ from typing import Any
 from autotrader.core.config import load_config
 from autotrader.core.llm import ReportInsights, get_report_llm, structured
 from autotrader.core.messages import audit_entry, create_message
+from autotrader.core.prompts import get_prompt
 from autotrader.core.state import TradingState
 
 logger = logging.getLogger(__name__)
@@ -147,17 +148,17 @@ def _llm_generate_insights(state: TradingState, stats: dict, llm_cfg: Any) -> di
         f"{o.get('symbol')} pnl={o.get('pnl',0):.0f} pattern={o.get('pattern','N/A')}"
         for o in outcomes
     ) or "no trades executed"
-    prompt = (
-        f"Post-market analysis for NSE intraday session {state.get('run_date','today')}.\n"
-        f"Market regime: {state.get('market_regime','unknown')} "
-        f"(confidence {state.get('market_confidence',0):.2f})\n"
-        f"Trade stats: {stats['count']} trades, win_rate={stats['win_rate']}%, "
-        f"avg_pnl={stats['avg_pnl']:.0f} INR, avg_rr={stats['avg_rr']:.2f}\n"
-        f"Outcomes: {outcome_text}\n"
-        f"Agent scores: {state.get('agent_scores', {})}\n\n"
-        "Generate an executive_summary (3-4 sentences), pattern_insights (2-4 bullets), "
-        "and recommendations (2-3 actionable items for tomorrow). "
-        "Do NOT suggest modifying strategy code or config values."
+    prompt = get_prompt(
+        "report_insights",
+        run_date=state.get("run_date", "today"),
+        market_regime=state.get("market_regime", "unknown"),
+        market_confidence=state.get("market_confidence", 0.0),
+        trade_count=stats["count"],
+        win_rate=stats["win_rate"],
+        avg_pnl=stats["avg_pnl"],
+        avg_rr=stats["avg_rr"],
+        outcome_text=outcome_text,
+        agent_scores=state.get("agent_scores", {}),
     )
     try:
         result: ReportInsights = chain.invoke(prompt)

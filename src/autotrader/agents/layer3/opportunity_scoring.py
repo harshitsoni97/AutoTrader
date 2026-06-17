@@ -8,6 +8,7 @@ from typing import Any
 from autotrader.core.config import load_config
 from autotrader.core.llm import ScoringReview, get_analysis_llm, structured
 from autotrader.core.messages import audit_entry, create_message
+from autotrader.core.prompts import get_prompt
 from autotrader.core.state import TradingState
 
 logger = logging.getLogger(__name__)
@@ -72,11 +73,11 @@ def _llm_review_opportunities(
         f"| tech={c['component_scores'].get('technical',0):.0f}"
         for i, c in enumerate(top3)
     )
-    prompt = (
-        f"Market regime: {regime} (confidence {confidence:.2f})\n"
-        f"Top 3 scored intraday candidates for NSE today:\n{candidates_text}\n\n"
-        "Select the single best setup, provide a score adjustment (±5 max), brief rationale, "
-        "up to 2 concerns, and set pass_review=false only if the setup should be vetoed."
+    prompt = get_prompt(
+        "scoring_review",
+        regime=regime,
+        confidence=confidence,
+        candidates_text=candidates_text,
     )
     try:
         result: ScoringReview = chain.invoke(prompt)

@@ -539,6 +539,72 @@ Every agent appends an `audit_entry` to the state's `audit_trail` list. The trai
 
 ---
 
+## LLMOps — Tracing & Prompt Repository
+
+AutoTrader ships with built-in support for **LangSmith** and **MLflow** to trace every LLM call, version prompt templates, and compare runs.
+
+### Prompt Repository
+
+All LLM prompt templates are centralised in `config/prompts.yaml`. Each entry has a version field so changes are tracked. The registry is loaded at startup by `src/autotrader/core/prompts.py` and served via `get_prompt(name, **kwargs)`.
+
+```yaml
+# config/prompts.yaml (excerpt)
+prompts:
+  catalyst_enrichment:
+    version: "v1"
+    template: |
+      Market regime today: {market_regime}.
+      NSE catalyst: symbol={symbol}, ...
+```
+
+Edit prompt wording without touching agent code, then bump `version` to distinguish runs in your tracing backend.
+
+### Enabling LangSmith Tracing
+
+LangChain auto-traces all LLM calls when `LANGCHAIN_TRACING_V2=true` is set. AutoTrader sets this automatically when the backend is configured:
+
+```yaml
+# config/llm_config.yaml
+llmops:
+  backend: "langsmith"
+  project_name: "autotrader"
+```
+
+```bash
+export LANGCHAIN_API_KEY="ls__..."   # or LANGSMITH_API_KEY
+python scripts/run_pre_market.py     # traces appear in LangSmith UI
+```
+
+Every run is tagged with the project name. Prompt versions are captured in trace metadata for comparison.
+
+### Enabling MLflow Tracing
+
+```yaml
+# config/llm_config.yaml
+llmops:
+  backend: "mlflow"
+  project_name: "autotrader"
+  mlflow_tracking_uri: "http://localhost:5000"
+```
+
+```bash
+mlflow server --host 0.0.0.0 --port 5000 &
+python scripts/run_pre_market.py
+```
+
+MLflow LangChain autolog captures model name, prompt, response, latency, and token counts per agent call.
+
+### Disabling Tracing
+
+```yaml
+llmops:
+  backend: "none"   # default — no external calls
+```
+
+Tracing is always best-effort: a missing API key or unreachable server is logged at INFO level and the run continues normally.
+
+---
+
 ## Testing
 
 ```bash
