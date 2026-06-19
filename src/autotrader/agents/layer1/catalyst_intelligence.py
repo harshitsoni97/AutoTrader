@@ -32,15 +32,15 @@ CATALYST_SCORES = {
 # Sector-to-symbol mapping for catalyst discovery
 _FALLBACK_SECTOR_WATCHLIST = {
     "Banking": ["HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN", "KOTAKBANK"],
-    "Capital_Goods": ["L&T", "BEL", "HAL", "BHEL", "ABB"],
+    "Capital_Goods": ["LT", "BEL", "HAL", "BHEL", "ABB"],
     "IT": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM"],
     "Pharma": ["SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB", "AUROPHARMA"],
-    "Auto": ["MARUTI", "TATAMOTORS", "M&M", "BAJAJ-AUTO", "HEROMOTOCO"],
+    "Auto": ["MARUTI", "TATAMOTOR", "MAHINDRA", "BAJAJ-AUTO", "HEROMOTOCO"],
     "Realty": ["DLF", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "PHOENIXLTD"],
     "Metal": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "SAIL"],
     "Energy": ["RELIANCE", "ONGC", "BPCL", "IOC", "POWERGRID"],
     "FMCG": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "DABUR"],
-    "Midcap": ["POLYCAB", "DELHIVERY", "ZOMATO", "NAUKRI", "IRCTC"],
+    "Midcap": ["POLYCAB", "DELHIVERY", "ETERNAL", "NAUKRI", "IRCTC"],
 }
 
 
