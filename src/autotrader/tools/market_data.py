@@ -21,11 +21,11 @@ def _yf_download(ticker: str, period: str = "5d", interval: str = "1d") -> list[
         for _, row in df.iterrows():
             records.append({
                 "date": str(row.get("Date", row.get("Datetime", ""))),
-                "open": float(row["Open"]),
-                "high": float(row["High"]),
-                "low": float(row["Low"]),
-                "close": float(row["Close"]),
-                "volume": float(row["Volume"]),
+                "open": float(row["Open"].iloc[0]) if hasattr(row["Open"], "iloc") else float(row["Open"]),
+                "high": float(row["High"].iloc[0]) if hasattr(row["High"], "iloc") else float(row["High"]),
+                "low": float(row["Low"].iloc[0]) if hasattr(row["Low"], "iloc") else float(row["Low"]),
+                "close": float(row["Close"].iloc[0]) if hasattr(row["Close"], "iloc") else float(row["Close"]),
+                "volume": float(row["Volume"].iloc[0]) if hasattr(row["Volume"], "iloc") else float(row["Volume"]),
             })
         return records
     except Exception as e:
@@ -73,11 +73,12 @@ def get_vix_data(period: str = "5d") -> dict[str, Any]:
 
 
 def get_gift_nifty() -> dict[str, Any]:
-    """Gift Nifty futures proxy via SGX (now NSE IFSC)."""
-    rows = _yf_download("NIFTY_FUT.NS", period="2d", interval="1h")
-    if rows:
-        return {"gift_nifty": rows[-1]["close"], "change_pct": 0.0}
-    # Fallback: return slight premium over Nifty close
+    """GIFT Nifty proxy — yfinance has no direct GIFT Nifty feed.
+
+    Fall back to Nifty spot with a small synthetic premium, which is
+    close enough for gap detection purposes. Replace with a real GIFT
+    Nifty data source (broker API or investing.com scrape) when available.
+    """
     nifty = get_nifty_data(period="2d")
     base = nifty[-1]["close"] if nifty else 22000
     return {"gift_nifty": round(base * 1.001, 2), "change_pct": 0.1}

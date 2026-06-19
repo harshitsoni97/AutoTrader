@@ -12,20 +12,32 @@ import requests
 logger = logging.getLogger(__name__)
 
 NSE_BASE = "https://www.nseindia.com"
+# NSE requires a realistic browser User-Agent plus a valid session cookie.
+# The homepage GET below establishes the cookie; without it every API call returns 401/404.
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; AutoTrader/1.0)",
-    "Accept": "application/json",
-    "Referer": "https://www.nseindia.com",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://www.nseindia.com/",
+    "X-Requested-With": "XMLHttpRequest",
+    "Connection": "keep-alive",
 }
 
 
 def _nse_get(path: str) -> dict | list | None:
-    """Make authenticated GET to NSE API."""
+    """Make authenticated GET to NSE API with session cookie."""
     session = requests.Session()
     try:
-        # Establish session cookie
-        session.get(NSE_BASE, headers=HEADERS, timeout=10)
-        resp = session.get(f"{NSE_BASE}{path}", headers=HEADERS, timeout=10)
+        # Warm up: fetch homepage to get NSE session cookie (nsit, nseappid)
+        session.get(NSE_BASE, headers=HEADERS, timeout=15)
+        # Small delay avoids immediate rate-limiting
+        import time; time.sleep(0.5)
+        resp = session.get(f"{NSE_BASE}{path}", headers=HEADERS, timeout=15)
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
