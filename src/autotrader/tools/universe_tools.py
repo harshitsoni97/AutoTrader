@@ -38,6 +38,7 @@ INDEX_CSV_MAP = {
 SYMBOL_CORRECTIONS: dict[str, str] = {
     "ZOMATO": "ETERNAL",    # Zomato rebranded to Eternal Ltd on NSE
     "M&M": "MM",            # yfinance drops & in ticker; NSE CSV uses M&M
+    "TATAMOTORS": "TMCV",  # Tata Motors demerged: TMCV (commercial), TMPV (passenger)
 }
 
 # Reverse map: what the CSV gives us → what yfinance/NSE API accepts
@@ -69,7 +70,8 @@ _FALLBACK_SYMBOLS = [
     {"symbol": "DIVISLAB", "sector": "Pharma"},
     {"symbol": "AUROPHARMA", "sector": "Pharma"},
     {"symbol": "MARUTI", "sector": "Auto"},
-    {"symbol": "TATAMOTORS", "sector": "Auto"},
+    {"symbol": "TMCV", "sector": "Auto"},   # Tata Motors Commercial Vehicles
+    {"symbol": "TMPV", "sector": "Auto"},   # Tata Motors Passenger Vehicles
     {"symbol": "MM", "sector": "Auto"},
     {"symbol": "BAJAJ-AUTO", "sector": "Auto"},
     {"symbol": "HEROMOTOCO", "sector": "Auto"},

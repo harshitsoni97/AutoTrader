@@ -18,7 +18,7 @@ SECTOR_WATCHLIST = {
     "Capital_Goods": ["L&T", "BEL", "HAL", "BHEL"],
     "IT": ["TCS", "INFY", "WIPRO", "HCLTECH"],
     "Pharma": ["SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB"],
-    "Auto": ["MARUTI", "TATAMOTORS", "M&M", "BAJAJ-AUTO"],
+    "Auto": ["MARUTI", "TMCV", "TMPV", "MM", "BAJAJ-AUTO"],
     "Realty": ["DLF", "GODREJPROP", "OBEROIRLTY"],
     "Metal": ["TATASTEEL", "JSWSTEEL", "HINDALCO"],
     "Energy": ["RELIANCE", "ONGC", "BPCL"],
