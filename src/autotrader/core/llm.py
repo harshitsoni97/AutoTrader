@@ -318,6 +318,30 @@ def get_report_llm(cfg: Any) -> Any | None:
         return None
 
 
+def make_stack_llms(stack: Any) -> tuple[Any | None, Any | None]:
+    """Build (fast_llm, analysis_llm) for a compete stack.
+
+    Returns (None, None) when API keys are missing so the coordinator
+    can record the stack as unavailable without crashing.
+    """
+    fast_llm = None
+    analysis_llm = None
+
+    if _is_available(stack.fast_provider):
+        try:
+            fast_llm = _make_llm(stack.fast_provider, stack.fast_model, stack.fast_temperature, stack.fast_max_tokens)
+        except Exception as exc:
+            logger.warning("Stack %r fast LLM (%s/%s) failed: %s", stack.name, stack.fast_provider, stack.fast_model, exc)
+
+    if _is_available(stack.analysis_provider):
+        try:
+            analysis_llm = _make_llm(stack.analysis_provider, stack.analysis_model, stack.analysis_temperature, stack.analysis_max_tokens)
+        except Exception as exc:
+            logger.warning("Stack %r analysis LLM (%s/%s) failed: %s", stack.name, stack.analysis_provider, stack.analysis_model, exc)
+
+    return fast_llm, analysis_llm
+
+
 def make_competitor_llm(competitor: Any) -> Any | None:
     """Build an LLM instance from a CompetitorConfig for compete mode.
 

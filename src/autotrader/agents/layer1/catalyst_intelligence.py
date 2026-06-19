@@ -78,10 +78,13 @@ def _score_corporate_actions(symbol: str, actions: list[dict]) -> list[dict]:
 def _llm_enrich_catalysts(
     catalysts: list[dict],
     market_regime: str,
-    llm_cfg: Any,
+    llm: Any,
 ) -> list[dict]:
-    """Use fast LLM to refine scores on the top 5 catalysts (with Pydantic enforcement)."""
-    llm = get_fast_llm(llm_cfg)
+    """Use fast LLM to refine scores on the top 5 catalysts (with Pydantic enforcement).
+
+    Accepts a pre-built LangChain chat model so the compete coordinator can
+    call this with any stack's fast LLM without re-building config.
+    """
     if llm is None:
         return catalysts
 
@@ -155,11 +158,14 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
 
     final_catalysts = sorted(by_symbol.values(), key=lambda x: x["catalyst_score"], reverse=True)
 
+    # Store raw (pre-LLM) catalysts so compete coordinator can re-enrich per stack
+    raw_catalysts = [dict(c) for c in final_catalysts]
+
     # Optional LLM enrichment — refines scores with market context
     cfg = load_config()
     if cfg.llm.enable_catalyst_llm:
         market_regime = state.get("market_regime", "unknown")
-        final_catalysts = _llm_enrich_catalysts(final_catalysts, market_regime, cfg.llm)
+        final_catalysts = _llm_enrich_catalysts(final_catalysts, market_regime, get_fast_llm(cfg.llm))
         final_catalysts.sort(key=lambda x: x["catalyst_score"], reverse=True)
 
     msg = create_message(
@@ -177,6 +183,7 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
 
     return {
         "catalysts": final_catalysts,
+        "raw_catalysts": raw_catalysts,
         "messages": [msg],
         "audit_trail": [entry],
     }

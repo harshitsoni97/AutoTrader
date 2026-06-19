@@ -109,15 +109,17 @@ def _llm_enrich_regime(
     vix: float,
     fii_net: float,
     global_pct: float,
-    llm_cfg: Any,
+    llm: Any,
 ) -> tuple[str, float, dict]:
     """Use analysis-tier LLM to synthesize a regime narrative and adjust confidence.
+
+    Accepts a pre-built LangChain chat model so the compete coordinator can
+    call this with any stack's analysis LLM.
 
     Regime is a multiplier on all downstream scoring — misclassification on a
     risk_off day biases every signal bullish simultaneously. A capable model
     here is worth the extra ~$0.01/month.
     """
-    llm = get_analysis_llm(llm_cfg)
     if llm is None:
         return regime, confidence, {}
 
@@ -187,7 +189,7 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
     cfg = load_config()
     if cfg.llm.enable_regime_llm:
         regime, confidence, llm_enrichment = _llm_enrich_regime(
-            regime, confidence, nifty_pct, vix, fii_net, global_pct, cfg.llm
+            regime, confidence, nifty_pct, vix, fii_net, global_pct, get_analysis_llm(cfg.llm)
         )
 
     msg = create_message(
@@ -229,7 +231,11 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
         "market_regime": regime,
         "market_confidence": confidence,
         "fii_future_net": fii_future_net,
+        "fii_net_cash": fii_net,
         "gift_nifty_gap_pct": gift_gap_pct,
+        "nifty_change_pct": round(nifty_pct, 3),
+        "india_vix": vix,
+        "global_change_pct": round(global_pct, 3),
         "messages": [msg],
         "audit_trail": [entry],
     }

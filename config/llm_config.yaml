@@ -87,47 +87,70 @@ llm:
   enable_report_llm: true
 
 # ── Compete mode ─────────────────────────────────────────────────────────────
-# When enabled: the compete graph runs every competitor's model through the
-# LLM scoring review. At end of day, compete_evaluator ranks them by
-# hypothetical PnL (entry = price at pick time, exit = closing price).
+# Each stack is a COMPLETE provider configuration: fast + analysis + report tiers.
+# The deterministic pipeline (price data, sector scores, RS, volume, technical)
+# runs once and is shared. For each stack the coordinator runs:
+#   1. Catalyst enrichment    (fast LLM)      → each stack weights catalysts differently
+#   2. Regime enrichment      (analysis LLM)  → each stack may read the regime differently
+#   3. Score recomputation    (deterministic) → with stack's catalyst + regime inputs
+#   4. Scoring review / veto  (analysis LLM)  → each stack picks its top opportunity
+# At end of day, compete_evaluator fetches closing prices and ranks stacks by PnL %.
 #
-# dry_run: true  → collect picks only; no real orders for any competitor
-# dry_run: false → primary competitor drives real execution; others tracked
-# primary: name of the competitor that drives real orders (actual mode only)
-#
-# Each competitor fields:
-#   name             display label shown in leaderboard
-#   provider         anthropic | openai | google | mistral | groq | ollama
-#   model            exact model string
-#   temperature      0.0-1.0 (ignored by o-series)
-#   max_tokens       output token budget
-#   reasoning_effort openai / openai_o: none|low|medium|high|xhigh
-#   thinking_budget  anthropic / google: token budget (0 = disabled)
+# dry_run: true  → all stacks track hypothetically, no real orders
+# dry_run: false → primary stack drives real execution; all others tracked
+# primary: name of the stack that drives real orders (actual mode only)
 compete:
-  enabled: false         # set to true to activate
+  enabled: false    # set to true to activate
   dry_run: true
-  primary: ""            # e.g. "Claude Opus 4.8" — only matters when dry_run: false
-  competitors:
-    - name: "Claude Opus 4.8"
-      provider: "anthropic"
-      model: "claude-opus-4-8"
-      temperature: 0.2
-      max_tokens: 1024
-      thinking_budget: 1500
+  primary: ""       # e.g. "Anthropic" — only matters when dry_run: false
+  stacks:
+    # ── Anthropic stack ──────────────────────────────────────────────────────
+    # haiku (fast/cheap catalyst scoring) + sonnet (regime + review) + opus+thinking (report)
+    - name: "Anthropic"
+      fast_provider: "anthropic"
+      fast_model: "claude-haiku-4-5-20251001"
+      fast_temperature: 0.1
+      fast_max_tokens: 512
+      analysis_provider: "anthropic"
+      analysis_model: "claude-sonnet-4-6"
+      analysis_temperature: 0.2
+      analysis_max_tokens: 1024
+      report_provider: "anthropic"
+      report_model: "claude-opus-4-8"
+      report_max_tokens: 4096
+      report_thinking_budget: 2000
 
-    - name: "GPT-5.4 Mini"
-      provider: "openai"
-      model: "gpt-5.4 mini"
-      temperature: 0.2
-      max_tokens: 1024
-      reasoning_effort: "medium"
+    # ── OpenAI stack ─────────────────────────────────────────────────────────
+    # gpt-5.4-mini (fast) + gpt-5.4 (analysis, reasoning=low) + gpt-5.4 (report, reasoning=high)
+    - name: "OpenAI"
+      fast_provider: "openai"
+      fast_model: "gpt-5.4 mini"
+      fast_temperature: 0.1
+      fast_max_tokens: 512
+      analysis_provider: "openai"
+      analysis_model: "gpt-5.4"
+      analysis_temperature: 0.2
+      analysis_max_tokens: 1024
+      report_provider: "openai"
+      report_model: "gpt-5.4"
+      report_max_tokens: 4096
+      report_reasoning_effort: "high"
 
-    - name: "Gemini 2.5 Flash"
-      provider: "google"
-      model: "gemini-2.5-flash"
-      temperature: 0.2
-      max_tokens: 1024
-      thinking_budget: 1000
+    # ── Google stack ─────────────────────────────────────────────────────────
+    # gemini-2.5-flash-lite (fast) + gemini-2.5-flash (analysis) + gemini-2.5-flash+thinking (report)
+    - name: "Google"
+      fast_provider: "google"
+      fast_model: "gemini-2.5-flash-lite"
+      fast_temperature: 0.1
+      fast_max_tokens: 512
+      analysis_provider: "google"
+      analysis_model: "gemini-2.5-flash"
+      analysis_temperature: 0.2
+      analysis_max_tokens: 1024
+      report_provider: "google"
+      report_model: "gemini-2.5-flash"
+      report_max_tokens: 4096
+      report_thinking_budget: 2000
 
 # ── LLMOps ───────────────────────────────────────────────────────────────────
 # backend: "langsmith" | "mlflow" | "none"

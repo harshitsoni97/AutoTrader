@@ -33,9 +33,18 @@ class TradingState(TypedDict):
 
     # FII derivatives positioning (from MarketRegimeAgent)
     fii_future_net: float       # FII net index future contracts (long - short)
+    fii_net_cash: float         # FII cash net buy/sell (crores) — used for regime enrichment
 
     # GIFT Nifty gap (from MarketRegimeAgent)
     gift_nifty_gap_pct: float   # Pre-market gap % vs previous Nifty close
+
+    # Raw market inputs stored for compete-mode per-stack re-enrichment
+    nifty_change_pct: float     # Nifty 5-day % change
+    india_vix: float            # India VIX level
+    global_change_pct: float    # Blended global market % change (SP500 + Nasdaq avg)
+
+    # Raw (pre-LLM) catalysts — stored so compete coordinator can re-enrich per stack
+    raw_catalysts: list[dict]
 
     # Layer 2 outputs
     candidates: list[dict]      # [{symbol, relative_strength, volume_score, technical_score, pattern, ...}]
@@ -99,7 +108,12 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
         options_iv_skew=0.0,
         options_signal="neutral",
         fii_future_net=0.0,
+        fii_net_cash=0.0,
         gift_nifty_gap_pct=0.0,
+        nifty_change_pct=0.0,
+        india_vix=15.0,
+        global_change_pct=0.0,
+        raw_catalysts=[],
         candidates=[],
         scored_opportunities=[],
         governance_approved=False,

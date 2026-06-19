@@ -158,23 +158,33 @@ class LLMConfig(BaseModel):
     enable_report_llm: bool = True
 
 
-class CompetitorConfig(BaseModel):
-    """A single model entry in compete mode."""
-    name: str                           # Display name, e.g. "Claude Opus 4.8"
-    provider: str                       # anthropic | openai | google | ...
-    model: str
-    temperature: float = 0.2
-    max_tokens: int = 1024
-    reasoning_effort: str = ""          # openai / openai_o: none|low|medium|high|xhigh
-    thinking_budget: int = 0            # anthropic / google: tokens; 0 = disabled
+class StackConfig(BaseModel):
+    """A complete provider stack for compete mode — fast + analysis + report tiers."""
+    name: str                               # Display label, e.g. "Anthropic"
+    # Fast tier — catalyst enrichment
+    fast_provider: str
+    fast_model: str
+    fast_temperature: float = 0.1
+    fast_max_tokens: int = 512
+    # Analysis tier — regime enrichment + scoring review
+    analysis_provider: str
+    analysis_model: str
+    analysis_temperature: float = 0.2
+    analysis_max_tokens: int = 1024
+    # Report tier — end-of-day learning report (optional; falls back to fast if empty)
+    report_provider: str = ""
+    report_model: str = ""
+    report_max_tokens: int = 4096
+    report_thinking_budget: int = 0         # anthropic / google: tokens; 0 = disabled
+    report_reasoning_effort: str = ""       # openai / openai_o: low|medium|high|xhigh
 
 
 class CompeteModeConfig(BaseModel):
-    """Compete mode: run multiple models side-by-side and rank by end-of-day PnL."""
+    """Compete mode: run full provider stacks side-by-side and rank by end-of-day PnL."""
     enabled: bool = False
-    dry_run: bool = True                # True → no real orders for any competitor
-    primary: str = ""                   # name of competitor that drives real execution (actual mode only)
-    competitors: List[CompetitorConfig] = Field(default_factory=list)
+    dry_run: bool = True                    # True → no real orders for any stack
+    primary: str = ""                       # stack name that drives real execution (actual mode only)
+    stacks: List[StackConfig] = Field(default_factory=list)
 
 
 class PlatformConfig(BaseModel):
@@ -235,11 +245,11 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     if os.getenv("NOTIFICATION_CHANNELS"):
         notif_data["channels"] = [c.strip() for c in os.getenv("NOTIFICATION_CHANNELS").split(",") if c.strip()]
 
-    # Parse competitors list inside compete section
-    compete_competitors = [
-        CompetitorConfig(**c) for c in compete_data.pop("competitors", [])
+    # Parse stacks list inside compete section
+    compete_stacks = [
+        StackConfig(**s) for s in compete_data.pop("stacks", [])
     ]
-    compete_cfg = CompeteModeConfig(**compete_data, competitors=compete_competitors)
+    compete_cfg = CompeteModeConfig(**compete_data, stacks=compete_stacks)
 
     return PlatformConfig(
         trading_policy=TradingPolicy(**tp_data),
