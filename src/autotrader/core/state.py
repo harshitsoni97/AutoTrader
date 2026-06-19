@@ -24,6 +24,19 @@ class TradingState(TypedDict):
     sector_rankings: list[dict]
     catalysts: list[dict]       # [{symbol, catalyst_score, reason}]
 
+    # Options Intelligence (Layer 1 parallel)
+    options_pcr: float          # Put-Call Ratio by OI
+    options_max_pain: float     # Max pain strike
+    options_atm_iv: float       # ATM implied volatility %
+    options_iv_skew: float      # OTM put IV - OTM call IV (>0 = fear)
+    options_signal: str         # bullish | bearish | neutral
+
+    # FII derivatives positioning (from MarketRegimeAgent)
+    fii_future_net: float       # FII net index future contracts (long - short)
+
+    # GIFT Nifty gap (from MarketRegimeAgent)
+    gift_nifty_gap_pct: float   # Pre-market gap % vs previous Nifty close
+
     # Layer 2 outputs
     candidates: list[dict]      # [{symbol, relative_strength, volume_score, technical_score, pattern, ...}]
 
@@ -35,6 +48,7 @@ class TradingState(TypedDict):
     governance_reason: str
     risk_passed: bool
     risk_reason: str
+    kelly_fraction: float       # 0 = use fixed-fraction; >0 = Kelly-derived position size
 
     # Layer 5 outputs
     trade_plan: dict            # {symbol, entry, stop, target1, target2, position_size}
@@ -76,12 +90,20 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
         top_sectors=[],
         sector_rankings=[],
         catalysts=[],
+        options_pcr=1.0,
+        options_max_pain=0.0,
+        options_atm_iv=0.0,
+        options_iv_skew=0.0,
+        options_signal="neutral",
+        fii_future_net=0.0,
+        gift_nifty_gap_pct=0.0,
         candidates=[],
         scored_opportunities=[],
         governance_approved=False,
         governance_reason="",
         risk_passed=False,
         risk_reason="",
+        kelly_fraction=0.0,
         trade_plan={},
         orders=[],
         positions=[],

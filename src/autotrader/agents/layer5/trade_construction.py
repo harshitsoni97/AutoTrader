@@ -48,14 +48,22 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
     target1 = round(entry_price + stop_distance * policy.min_risk_reward, 2)
     target2 = round(entry_price + stop_distance * 3.0, 2)
 
-    # Position sizing: risk INR = capital * max_risk_per_trade_pct / 100
-    risk_per_trade = policy.total_capital * policy.max_risk_per_trade_pct / 100
+    # Position sizing
     risk_per_share = entry_price - stop_price
     if risk_per_share <= 0:
         risk_per_share = atr
 
-    qty = int(risk_per_trade / risk_per_share)
-    # Cap by max capital per trade
+    kelly_fraction = state.get("kelly_fraction", 0.0)
+    if kelly_fraction > 0:
+        # Kelly-derived sizing: allocate kelly_fraction of total capital
+        kelly_capital = policy.total_capital * kelly_fraction
+        qty = int(kelly_capital / entry_price)
+    else:
+        # Fixed-fraction fallback: risk max_risk_per_trade_pct of capital
+        risk_per_trade = policy.total_capital * policy.max_risk_per_trade_pct / 100
+        qty = int(risk_per_trade / risk_per_share)
+
+    # Hard caps: never exceed max_capital_per_trade_pct regardless of Kelly
     max_capital = policy.total_capital * policy.max_capital_per_trade_pct / 100
     qty = min(qty, int(max_capital / entry_price))
     qty = max(qty, 1)
@@ -76,6 +84,8 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
         "pattern": pattern,
         "score": top.get("score", 0),
         "catalyst_reason": top.get("catalyst_reason", ""),
+        "kelly_fraction": kelly_fraction,
+        "sizing_method": "kelly" if kelly_fraction > 0 else "fixed_fraction",
     }
 
     msg = create_message(
