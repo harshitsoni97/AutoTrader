@@ -41,9 +41,9 @@ def _market_regime_score(regime: str, confidence: float) -> float:
 
 def _sector_score(symbol: str, sector_rankings: list[dict], top_sectors: list[str]) -> float:
     # Map symbol to sector — simplified lookup
-    from autotrader.agents.layer1.catalyst_intelligence import SECTOR_WATCHLIST
+    from autotrader.agents.layer1.catalyst_intelligence import _FALLBACK_SECTOR_WATCHLIST
     symbol_sector = None
-    for sector, syms in SECTOR_WATCHLIST.items():
+    for sector, syms in _FALLBACK_SECTOR_WATCHLIST.items():
         if symbol in syms:
             symbol_sector = sector
             break
