@@ -1,6 +1,5 @@
 langgraph>=0.2.0
 langchain>=0.2.0
-langchain-anthropic>=0.1.0
 langchain-community>=0.2.0
 pydantic>=2.0.0
 pyyaml>=6.0
@@ -18,3 +17,17 @@ yfinance>=0.2.0
 langsmith>=0.1.0
 mlflow>=2.10.0
 pytest>=7.4.0
+
+# ── LLM provider packages (install only what you use) ───────────────────────
+# Anthropic (default)
+langchain-anthropic>=0.1.0
+# OpenAI / Azure OpenAI
+# langchain-openai>=0.1.0
+# Google Gemini
+# langchain-google-genai>=1.0.0
+# Mistral
+# langchain-mistralai>=0.1.0
+# Groq
+# langchain-groq>=0.1.0
+# Ollama (local)
+# langchain-ollama>=0.1.0

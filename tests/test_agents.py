@@ -268,8 +268,9 @@ def test_opportunity_scoring():
     assert len(scored) == 1
     score = scored[0]["composite_score"]
     
-    # Expected: market(100*0.20) + sector(100*0.20) + rs(80*0.20) + vol(60*0.15) + catalyst(65*0.15) + tech(70*0.10)
-    expected = 100*0.20 + 100*0.20 + 80*0.20 + 60*0.15 + 65*0.15 + 70*0.10
+    # Weights: market_regime=0.18, sector=0.17, rs=0.20, vol=0.15, catalyst=0.15, tech=0.10, options=0.05
+    # options_signal defaults to "neutral" → options_s=50
+    expected = 100*0.18 + 100*0.17 + 80*0.20 + 60*0.15 + 65*0.15 + 70*0.10 + 50*0.05
     assert abs(score - expected) < 0.01
 
 

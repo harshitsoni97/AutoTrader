@@ -9,6 +9,7 @@ from typing import Any
 from autotrader.core.config import load_config
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
+from autotrader.memory.long_term import LongTermMemory
 from autotrader.tools.market_data import get_stock_data
 from autotrader.tools.nse_tools import get_asm_gsm_list, get_corporate_actions
 
@@ -17,6 +18,29 @@ logger = logging.getLogger(__name__)
 AGENT_NAME = "RiskAgent"
 MIN_AVG_VOLUME = 500_000
 MAX_SPREAD_PCT = 0.2
+KELLY_MIN_OBSERVATIONS = 20   # Don't trust Kelly until we have enough data
+KELLY_MAX_FRACTION = 0.15     # Hard cap: never more than 15% of capital per trade
+
+
+def _kelly_fraction(pattern_key: str, rr: float) -> tuple[float, str]:
+    """Half-Kelly position fraction for a given pattern.
+
+    f* = (b×p - q) / b  where b=RR, p=win_rate, q=1-p
+    Returns (fraction 0-KELLY_MAX_FRACTION, reasoning_note).
+    """
+    mem = LongTermMemory()
+    rec = mem.get_pattern(pattern_key)
+    if rec is None or rec.get("observations", 0) < KELLY_MIN_OBSERVATIONS:
+        return 0.0, f"kelly_skipped: <{KELLY_MIN_OBSERVATIONS} observations"
+    p = rec["win_rate"]
+    q = 1.0 - p
+    b = max(rr, 0.1)
+    full_kelly = (b * p - q) / b
+    if full_kelly <= 0:
+        return 0.0, f"kelly_negative: p={p:.2f} rr={b:.2f} — skip trade"
+    half_kelly = full_kelly / 2.0
+    fraction = min(half_kelly, KELLY_MAX_FRACTION)
+    return round(fraction, 4), f"kelly: f*={full_kelly:.3f} half={half_kelly:.3f} cap={fraction:.3f} (p={p:.2f} obs={rec['observations']})"
 
 
 def _get_liquidity(symbol: str, stock_data: dict | list | None = None) -> dict:
@@ -121,22 +145,30 @@ def risk_agent(state: TradingState) -> dict[str, Any]:
     if top.get("ret_1d_pct", 0) > 3.0:
         return fail(f"{symbol}: Gapped up {top.get('ret_1d_pct', 0):.1f}% — gap risk")
 
-    reason = f"All risk checks passed. R/R={rr:.2f}, AvgVol={avg_vol_20d:,.0f}"
+    # Kelly Criterion sizing — requires sufficient historical observations
+    pattern = top.get("pattern", "UNKNOWN")
+    kelly_fraction, kelly_note = _kelly_fraction(pattern, rr)
+
+    reason = f"All risk checks passed. R/R={rr:.2f}, AvgVol={avg_vol_20d:,.0f}. {kelly_note}"
     msg = create_message(
         source=AGENT_NAME, target="TradeConstructionAgent",
-        payload={"risk_pass": True, "symbol": symbol, "reason": reason, "rr": rr},
+        payload={"risk_pass": True, "symbol": symbol, "reason": reason, "rr": rr,
+                 "kelly_fraction": kelly_fraction},
     )
     entry_audit = audit_entry(agent=AGENT_NAME, action="risk_passed", data={
         "symbol": symbol,
         "rr": round(rr, 2),
         "spread_pct": spread_pct,
         "avg_vol_20d": int(avg_vol_20d),
+        "kelly_fraction": kelly_fraction,
+        "kelly_note": kelly_note,
     })
     logger.info("[%s] PASSED for %s: %s", AGENT_NAME, symbol, reason)
 
     return {
         "risk_passed": True,
         "risk_reason": reason,
+        "kelly_fraction": kelly_fraction,
         "messages": [msg],
         "audit_trail": [entry_audit],
     }

@@ -6,17 +6,18 @@ import logging
 from typing import Any
 
 from autotrader.core.config import load_config
-from autotrader.core.llm import RegimeEnrichment, get_fast_llm, structured
+from autotrader.core.llm import RegimeEnrichment, get_analysis_llm, structured
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.prompts import get_prompt
 from autotrader.core.state import TradingState
 from autotrader.tools.market_data import (
     get_banknifty_data,
+    get_gift_nifty,
     get_global_markets,
     get_nifty_data,
     get_vix_data,
 )
-from autotrader.tools.nse_tools import get_fii_dii_data
+from autotrader.tools.nse_tools import get_fii_dii_data, get_fii_derivatives
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +109,17 @@ def _llm_enrich_regime(
     vix: float,
     fii_net: float,
     global_pct: float,
-    llm_cfg: Any,
+    llm: Any,
 ) -> tuple[str, float, dict]:
-    """Use fast LLM to synthesize a regime narrative and optionally adjust confidence."""
-    llm = get_fast_llm(llm_cfg)
+    """Use analysis-tier LLM to synthesize a regime narrative and adjust confidence.
+
+    Accepts a pre-built LangChain chat model so the compete coordinator can
+    call this with any stack's analysis LLM.
+
+    Regime is a multiplier on all downstream scoring — misclassification on a
+    risk_off day biases every signal bullish simultaneously. A capable model
+    here is worth the extra ~$0.01/month.
+    """
     if llm is None:
         return regime, confidence, {}
 
@@ -139,6 +147,15 @@ def _llm_enrich_regime(
         return regime, confidence, {}
 
 
+def _compute_gift_gap(gift_data: dict, nifty_rows: list[dict]) -> float:
+    """Gap between GIFT Nifty futures price and previous Nifty close (%)."""
+    gift_price = gift_data.get("gift_nifty", 0.0)
+    prev_close = nifty_rows[-1]["close"] if nifty_rows else 0.0
+    if prev_close > 0 and gift_price > 0:
+        return round((gift_price / prev_close - 1) * 100, 3)
+    return 0.0
+
+
 def market_regime_agent(state: TradingState) -> dict[str, Any]:
     logger.info("[%s] Running market regime analysis", AGENT_NAME)
 
@@ -147,6 +164,8 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
     vix_data = get_vix_data()
     fii_dii = get_fii_dii_data()
     global_mkts = get_global_markets()
+    fii_deriv = get_fii_derivatives()
+    gift_data = get_gift_nifty()
 
     nifty_pct = _pct_change(nifty, 5)
     banknifty_pct = _pct_change(banknifty, 5)
@@ -157,6 +176,12 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
     # Blend global signal
     global_pct = (sp500_pct + global_mkts.get("nasdaq_change_pct", 0.0)) / 2
 
+    # FII derivatives net position (index futures long - short)
+    fii_future_net = fii_deriv.get("fii_index_future_net", 0.0)
+
+    # GIFT Nifty gap vs previous close
+    gift_gap_pct = _compute_gift_gap(gift_data, nifty)
+
     regime, confidence = _determine_regime(nifty_pct, vix, fii_net, global_pct)
 
     # Optional LLM synthesis — narrative enrichment + confidence refinement
@@ -164,7 +189,7 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
     cfg = load_config()
     if cfg.llm.enable_regime_llm:
         regime, confidence, llm_enrichment = _llm_enrich_regime(
-            regime, confidence, nifty_pct, vix, fii_net, global_pct, cfg.llm
+            regime, confidence, nifty_pct, vix, fii_net, global_pct, get_analysis_llm(cfg.llm)
         )
 
     msg = create_message(
@@ -177,6 +202,8 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
             "banknifty_5d_pct": round(banknifty_pct, 3),
             "vix": vix,
             "fii_net": fii_net,
+            "fii_future_net": fii_future_net,
+            "gift_nifty_gap_pct": gift_gap_pct,
             "global_pct": round(global_pct, 3),
         },
     )
@@ -185,16 +212,30 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
         agent=AGENT_NAME,
         action="regime_determined",
         data={
-            "regime": regime, "confidence": confidence, "vix": vix, "fii_net": fii_net,
+            "regime": regime,
+            "confidence": confidence,
+            "vix": vix,
+            "fii_net": fii_net,
+            "fii_future_net": fii_future_net,
+            "gift_nifty_gap_pct": gift_gap_pct,
             **llm_enrichment,
         },
     )
 
-    logger.info("[%s] Regime=%s Confidence=%.2f VIX=%.1f", AGENT_NAME, regime, confidence, vix)
+    logger.info(
+        "[%s] Regime=%s Confidence=%.2f VIX=%.1f FIIFut=%+.0f GIFTGap=%+.2f%%",
+        AGENT_NAME, regime, confidence, vix, fii_future_net, gift_gap_pct,
+    )
 
     return {
         "market_regime": regime,
         "market_confidence": confidence,
+        "fii_future_net": fii_future_net,
+        "fii_net_cash": fii_net,
+        "gift_nifty_gap_pct": gift_gap_pct,
+        "nifty_change_pct": round(nifty_pct, 3),
+        "india_vix": vix,
+        "global_change_pct": round(global_pct, 3),
         "messages": [msg],
         "audit_trail": [entry],
     }

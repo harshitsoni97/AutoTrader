@@ -119,24 +119,72 @@ class NotificationConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    # Model identifiers — swap these in llm_config.yaml to change providers
+    # Provider per tier — each tier can use a different vendor.
+    # Supported: anthropic | openai | google | mistral | groq | ollama | azure_openai
+    fast_provider: str = "anthropic"
     fast_model: str = "claude-haiku-4-5-20251001"
     fast_max_tokens: int = 512
     fast_temperature: float = 0.1
 
+    analysis_provider: str = "anthropic"
     analysis_model: str = "claude-sonnet-4-6"
     analysis_max_tokens: int = 1024
     analysis_temperature: float = 0.2
 
+    report_provider: str = "anthropic"
     report_model: str = "claude-sonnet-4-6"
     report_max_tokens: int = 4096
+    # Thinking/reasoning config — provider-specific:
+    #   anthropic  → report_thinking_budget > 0 enables extended thinking (budget_tokens)
+    #   google     → report_thinking_budget > 0 sets Gemini thinking_budget (tokens)
+    #   openai     → report_reasoning_effort sets reasoning depth for GPT-5.x models
+    #                correct API format: reasoning={"effort": effort}
+    #                levels: "" (off) | none | minimal | low | medium | high | xhigh
+    #   openai_o   → same effort levels; temperature is rejected by o-series API
+    #   all others → both fields ignored
     report_thinking_budget: int = 2000
+    # OpenAI reasoning effort levels (none/minimal/low/medium/high/xhigh):
+    #   none/minimal → latency-critical tasks (voice, classification)
+    #   low          → tool-use, planning, multi-step — fast + cheap
+    #   medium       → default; quality + reliability for agentic tasks
+    #   high         → complex reasoning, deep planning — our trade veto gate
+    #   xhigh        → deep research, async workflows — rarely needed here
+    report_reasoning_effort: str = "high"  # openai / openai_o: high suits trade veto
 
     # Feature flags — disable individually to fall back to deterministic logic
     enable_catalyst_llm: bool = True
     enable_regime_llm: bool = True
     enable_scoring_llm: bool = True
     enable_report_llm: bool = True
+
+
+class StackConfig(BaseModel):
+    """A complete provider stack for compete mode — fast + analysis + report tiers."""
+    name: str                               # Display label, e.g. "Anthropic"
+    # Fast tier — catalyst enrichment
+    fast_provider: str
+    fast_model: str
+    fast_temperature: float = 0.1
+    fast_max_tokens: int = 512
+    # Analysis tier — regime enrichment + scoring review
+    analysis_provider: str
+    analysis_model: str
+    analysis_temperature: float = 0.2
+    analysis_max_tokens: int = 1024
+    # Report tier — end-of-day learning report (optional; falls back to fast if empty)
+    report_provider: str = ""
+    report_model: str = ""
+    report_max_tokens: int = 4096
+    report_thinking_budget: int = 0         # anthropic / google: tokens; 0 = disabled
+    report_reasoning_effort: str = ""       # openai / openai_o: low|medium|high|xhigh
+
+
+class CompeteModeConfig(BaseModel):
+    """Compete mode: run full provider stacks side-by-side and rank by end-of-day PnL."""
+    enabled: bool = False
+    dry_run: bool = True                    # True → no real orders for any stack
+    primary: str = ""                       # stack name that drives real execution (actual mode only)
+    stacks: List[StackConfig] = Field(default_factory=list)
 
 
 class PlatformConfig(BaseModel):
@@ -147,6 +195,7 @@ class PlatformConfig(BaseModel):
     llmops: LLMOpsConfig = Field(default_factory=LLMOpsConfig)
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
+    compete: CompeteModeConfig = Field(default_factory=CompeteModeConfig)
 
 
 # Alias used by tests and scripts
@@ -169,6 +218,7 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     llm_cfg_file = _load_yaml(root / "llm_config.yaml")
     llm_data = llm_cfg_file.get("llm", {})
     llmops_data = llm_cfg_file.get("llmops", {})
+    compete_data = llm_cfg_file.get("compete", {})
     broker_data = _load_yaml(root / "broker_config.yaml").get("broker", {})
     notif_data = _load_yaml(root / "notifications.yaml").get("notifications", {})
 
@@ -195,6 +245,12 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     if os.getenv("NOTIFICATION_CHANNELS"):
         notif_data["channels"] = [c.strip() for c in os.getenv("NOTIFICATION_CHANNELS").split(",") if c.strip()]
 
+    # Parse stacks list inside compete section
+    compete_stacks = [
+        StackConfig(**s) for s in compete_data.pop("stacks", [])
+    ]
+    compete_cfg = CompeteModeConfig(**compete_data, stacks=compete_stacks)
+
     return PlatformConfig(
         trading_policy=TradingPolicy(**tp_data),
         memory_policy=MemoryPolicy(**mp_data),
@@ -203,4 +259,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         llmops=LLMOpsConfig(**llmops_data),
         broker=BrokerConfig(**broker_data),
         notifications=NotificationConfig(**notif_data),
+        compete=compete_cfg,
     )

@@ -22,6 +22,23 @@ def _get_current_price(broker, symbol: str) -> float:
     return quote.get("ltp", 0.0)
 
 
+def _update_vwap(pos: dict, current_price: float) -> tuple[float, dict]:
+    """Incrementally update VWAP using cumulative price×volume.
+
+    Each monitoring tick adds one synthetic trade at current_price with unit volume.
+    In production, feed actual minute candle volume from the broker websocket.
+    Returns (vwap, updated_pos_fields).
+    """
+    qty = pos.get("qty", 1)
+    cum_pv = pos.get("vwap_cum_pv", pos["entry_price"] * qty)
+    cum_vol = pos.get("vwap_cum_vol", float(qty))
+    # Add this tick: use position qty as proxy volume weight
+    cum_pv += current_price * qty
+    cum_vol += qty
+    vwap = round(cum_pv / cum_vol, 2) if cum_vol else current_price
+    return vwap, {"vwap_cum_pv": cum_pv, "vwap_cum_vol": cum_vol, "vwap": vwap}
+
+
 def _exit_tag(symbol: str, leg: str, order_id: str) -> str:
     """Idempotent tag for an exit leg so the same exit is never sent twice."""
     return f"EX-{leg}-{order_id}"[:20]
@@ -60,11 +77,17 @@ def monitoring_agent(state: TradingState) -> dict[str, Any]:
         pos_order_id = pos.get("order_id", symbol)
 
         unrealized_pnl = (current_price - entry_price) * qty
-        pos = {**pos, "current_price": current_price, "unrealized_pnl": round(unrealized_pnl, 2)}
+        vwap, vwap_fields = _update_vwap(pos, current_price)
+        pos = {**pos, "current_price": current_price, "unrealized_pnl": round(unrealized_pnl, 2), **vwap_fields}
 
         # Circuit filter detection (price frozen)
         if current_price == entry_price and pos.get("prev_price", 0) == current_price:
             alerts.append(f"{symbol}: Possible circuit filter — price frozen at {current_price}")
+
+        # VWAP alert: price breaking below VWAP on a long position = exit signal
+        if current_price < vwap * 0.998 and not pos.get("vwap_warned"):
+            alerts.append(f"{symbol}: Price {current_price:.2f} broke below VWAP {vwap:.2f} — consider exit")
+            pos = {**pos, "vwap_warned": True}
 
         # Stop loss hit — only fire a full exit once
         if current_price <= stop and not pos.get("exit_order_id"):

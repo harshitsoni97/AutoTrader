@@ -16,13 +16,15 @@ logger = logging.getLogger(__name__)
 AGENT_NAME = "OpportunityScoringAgent"
 
 # Default weights (must sum to 1.0)
+# options_sentiment gets a 5% weight carved from market_regime and sector_strength
 WEIGHTS = {
-    "market_regime": 0.20,
-    "sector_strength": 0.20,
+    "market_regime": 0.18,
+    "sector_strength": 0.17,
     "relative_strength": 0.20,
     "volume": 0.15,
     "catalyst": 0.15,
     "technical": 0.10,
+    "options_sentiment": 0.05,
 }
 
 
@@ -59,10 +61,13 @@ def _llm_review_opportunities(
     top3: list[dict],
     regime: str,
     confidence: float,
-    llm_cfg: Any,
+    llm: Any,
 ) -> dict:
-    """Analysis LLM holistically reviews top 3 and can adjust the winner's score by ±5."""
-    llm = get_analysis_llm(llm_cfg)
+    """Analysis LLM holistically reviews top 3 and can adjust the winner's score by ±5.
+
+    Accepts a pre-built LangChain chat model so the compete coordinator can
+    call this with any competitor's model without re-building LLM config.
+    """
     if llm is None:
         return {}
 
@@ -106,6 +111,10 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
 
     regime_score = _market_regime_score(market_regime, market_confidence)
 
+    # Options sentiment score (0-100) from PCR + IV skew + max pain alignment
+    options_signal = state.get("options_signal", "neutral")
+    options_s = {"bullish": 80.0, "neutral": 50.0, "bearish": 20.0}.get(options_signal, 50.0)
+
     scored: list[dict] = []
     for candidate in candidates:
         symbol = candidate["symbol"]
@@ -137,6 +146,7 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
             + vol_s * WEIGHTS["volume"]
             + cat_s * WEIGHTS["catalyst"]
             + tech_s * WEIGHTS["technical"]
+            + options_s * WEIGHTS["options_sentiment"]
         )
         composite = round(composite, 2)
 
@@ -151,6 +161,7 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
                 "volume": round(vol_s, 2),
                 "catalyst": round(cat_s, 2),
                 "technical": round(tech_s, 2),
+                "options_sentiment": round(options_s, 2),
             },
             "current_price": candidate.get("current_price", 0),
             "pattern": candidate.get("pattern", "NONE"),
@@ -167,7 +178,7 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
     # Optional LLM holistic review of the top 3 candidates
     llm_review: dict = {}
     if cfg.llm.enable_scoring_llm and scored:
-        llm_review = _llm_review_opportunities(scored[:3], market_regime, market_confidence, cfg.llm)
+        llm_review = _llm_review_opportunities(scored[:3], market_regime, market_confidence, get_analysis_llm(cfg.llm))
         if llm_review:
             top_sym = llm_review.get("top_symbol")
             adjustment = llm_review.get("score_adjustment", 0.0)
