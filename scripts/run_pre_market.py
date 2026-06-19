@@ -4,6 +4,21 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
+# Load .env from project root before anything else
+from pathlib import Path
+_env_path = Path(__file__).parent.parent / ".env"
+if _env_path.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_path)
+    except ImportError:
+        # Parse manually if python-dotenv not installed
+        for line in _env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k.strip(), v.strip())
+
 import structlog
 from autotrader.graphs.pre_market import build_pre_market_graph
 from autotrader.core.config import load_config
