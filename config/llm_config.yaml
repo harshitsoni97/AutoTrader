@@ -10,33 +10,36 @@ llm:
   #   ollama       → none (local; set OLLAMA_BASE_URL if not localhost:11434)
   #   azure_openai → AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT
 
-  # ── Fast / low-cost model ────────────────────────────────────────────────────
-  # High-frequency, token-light calls: catalyst interpretation, regime narrative.
-  fast_provider: "anthropic"
-  fast_model: "claude-haiku-4-5-20251001"
+  # ── Which agents use which tier ──────────────────────────────────────────────
+  # fast     → CatalystIntelligenceAgent (5 calls/day, additive enrichment, low stakes)
+  # analysis → MarketRegimeAgent (1 call/day, HIGH stakes — regime wrong = all signals wrong)
+  # report   → OpportunityScoringAgent trade veto gate + DailyLearningAgent post-market
+  #
+  # Use your strongest model on report (trade veto) and analysis (regime).
+  # Fast tier can be cheap — the deterministic catalyst score is the foundation.
+
+  # ── Fast tier — catalyst enrichment only (low stakes, 5 calls/day) ──────────
+  fast_provider: "openai"
+  fast_model: "gpt-5.4 mini"           # capable enough for narrative ±10 adjustment
   fast_max_tokens: 512
   fast_temperature: 0.1
-  # OpenAI alternative:  fast_provider: "openai"    fast_model: "gpt-4o-mini"
-  # Google alternative:  fast_provider: "google"    fast_model: "gemini-2.0-flash"
-  # Groq alternative:    fast_provider: "groq"      fast_model: "llama-3.1-8b-instant"
-  # Free/local:          fast_provider: "ollama"    fast_model: "llama3.2"
+  # Google alternative:  fast_provider: "google"  fast_model: "gemini-3.1-flash-lite"
+  # Groq alternative:    fast_provider: "groq"    fast_model: "llama-4-scout-17b"
 
-  # ── Analysis model ───────────────────────────────────────────────────────────
-  # Structured scoring review — moderate reasoning, low latency.
+  # ── Analysis tier — regime classification (HIGH stakes, 1 call/day) ──────────
+  # Regime is a multiplier on all downstream scoring. Worth the extra $0.01/month.
   analysis_provider: "anthropic"
-  analysis_model: "claude-sonnet-4-6"
+  analysis_model: "claude-sonnet-4-6"   # best structured output, reliable ±0.10 constraint
   analysis_max_tokens: 1024
   analysis_temperature: 0.2
-  # OpenAI alternative:  analysis_provider: "openai"   analysis_model: "gpt-4o"
-  # Google alternative:  analysis_provider: "google"   analysis_model: "gemini-2.5-pro"
-  # Groq alternative:    analysis_provider: "groq"     analysis_model: "llama-3.3-70b-versatile"
+  # OpenAI alternative:  analysis_provider: "openai"  analysis_model: "gpt-5.4"
+  # Google alternative:  analysis_provider: "google"  analysis_model: "gemini-3.1-pro-preview"
 
-  # ── Report / synthesis model ─────────────────────────────────────────────────
-  # Used once post-market for the daily learning report narrative.
-  # report_thinking_budget: extended thinking token budget (Anthropic only).
-  # Set to 0 to disable thinking, or when using any non-Anthropic provider.
+  # ── Report tier — trade veto gate + daily learning (CRITICAL, 1 call/day) ───
+  # OpportunityScoringAgent runs this BEFORE capital is committed. Use your best.
+  # DailyLearningAgent also uses this post-market — low stakes but benefits from depth.
   report_provider: "anthropic"
-  report_model: "claude-sonnet-4-6"
+  report_model: "claude-opus-4-8"       # strongest structured output + extended thinking
   report_max_tokens: 4096
   # Thinking / reasoning — provider-specific (set the one that matches your provider):
   #   anthropic  → report_thinking_budget (token budget, >0 enables; requires temperature=1.0 auto-set)

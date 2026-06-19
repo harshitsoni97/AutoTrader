@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from autotrader.core.config import load_config
-from autotrader.core.llm import RegimeEnrichment, get_fast_llm, structured
+from autotrader.core.llm import RegimeEnrichment, get_analysis_llm, structured
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.prompts import get_prompt
 from autotrader.core.state import TradingState
@@ -110,8 +110,13 @@ def _llm_enrich_regime(
     global_pct: float,
     llm_cfg: Any,
 ) -> tuple[str, float, dict]:
-    """Use fast LLM to synthesize a regime narrative and optionally adjust confidence."""
-    llm = get_fast_llm(llm_cfg)
+    """Use analysis-tier LLM to synthesize a regime narrative and adjust confidence.
+
+    Regime is a multiplier on all downstream scoring — misclassification on a
+    risk_off day biases every signal bullish simultaneously. A capable model
+    here is worth the extra ~$0.01/month.
+    """
+    llm = get_analysis_llm(llm_cfg)
     if llm is None:
         return regime, confidence, {}
 
