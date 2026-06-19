@@ -1,0 +1,8 @@
+universe:
+  index: "nifty500"
+  max_from_index: 100
+  include_corporate_events: true
+  include_block_deals: true
+  include_chartink: false
+  include_preopen: false
+  max_total: 80

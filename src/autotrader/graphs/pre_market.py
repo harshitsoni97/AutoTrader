@@ -2,6 +2,7 @@
 import structlog
 from langgraph.graph import StateGraph, END
 from autotrader.core.state import TradingState
+from autotrader.agents.layer0.universe_builder import universe_builder_agent
 from autotrader.agents.layer1.market_regime import market_regime_agent
 from autotrader.agents.layer1.sector_rotation import sector_rotation_agent
 from autotrader.agents.layer1.catalyst_intelligence import catalyst_intelligence_agent
@@ -37,6 +38,7 @@ def build_pre_market_graph():
     graph = StateGraph(TradingState)
     
     # Add all nodes
+    graph.add_node("universe_builder", universe_builder_agent)
     graph.add_node("market_regime", market_regime_agent)
     graph.add_node("sector_rotation", sector_rotation_agent)
     graph.add_node("catalyst_intelligence", catalyst_intelligence_agent)
@@ -51,7 +53,8 @@ def build_pre_market_graph():
     graph.add_node("execution", execution_agent)
 
     # Set entry point
-    graph.set_entry_point("market_regime")
+    graph.set_entry_point("universe_builder")
+    graph.add_edge("universe_builder", "market_regime")
 
     # market_regime fans out to 3 parallel Layer 1 agents
     graph.add_edge("market_regime", "sector_rotation")

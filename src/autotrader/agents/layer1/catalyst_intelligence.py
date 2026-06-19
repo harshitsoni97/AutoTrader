@@ -30,7 +30,7 @@ CATALYST_SCORES = {
 }
 
 # Sector-to-symbol mapping for catalyst discovery
-SECTOR_WATCHLIST = {
+_FALLBACK_SECTOR_WATCHLIST = {
     "Banking": ["HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN", "KOTAKBANK"],
     "Capital_Goods": ["LT", "BEL", "HAL", "BHEL", "ABB"],
     "IT": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM"],
@@ -128,11 +128,22 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
 
     # 2. Corporate actions for watchlist symbols
     top_sectors = state.get("top_sectors", [])
+    universe = state.get("universe", [])
+
+    # Build sector map from dynamic universe if available, else fall back to hardcoded list
+    if universe:
+        universe_sector_map: dict[str, list[str]] = {}
+        for entry in universe:
+            universe_sector_map.setdefault(entry.get("sector", "Unknown"), []).append(entry["symbol"])
+        sector_watchlist = universe_sector_map
+    else:
+        sector_watchlist = _FALLBACK_SECTOR_WATCHLIST
+
     symbols_to_check: list[str] = []
     for sector in top_sectors:
-        symbols_to_check.extend(SECTOR_WATCHLIST.get(sector, []))
+        symbols_to_check.extend(sector_watchlist.get(sector, []))
     # Also scan all sectors for high-scoring actions
-    for sector, syms in SECTOR_WATCHLIST.items():
+    for sector, syms in sector_watchlist.items():
         symbols_to_check.extend(syms[:2])
     symbols_to_check = list(set(symbols_to_check))[:20]
 
@@ -143,7 +154,7 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
     # 3. Prioritise sector-aligned catalysts
     sector_symbols: set[str] = set()
     for sector in top_sectors:
-        sector_symbols.update(SECTOR_WATCHLIST.get(sector, []))
+        sector_symbols.update(sector_watchlist.get(sector, []))
 
     for cat in all_catalysts:
         if cat["symbol"] in sector_symbols:

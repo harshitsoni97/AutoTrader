@@ -187,6 +187,16 @@ class CompeteModeConfig(BaseModel):
     stacks: List[StackConfig] = Field(default_factory=list)
 
 
+class UniverseConfig(BaseModel):
+    index: str = "nifty500"
+    max_from_index: int = 100
+    include_corporate_events: bool = True
+    include_block_deals: bool = True
+    include_chartink: bool = False
+    include_preopen: bool = False
+    max_total: int = 80
+
+
 class PlatformConfig(BaseModel):
     trading_policy: TradingPolicy = Field(default_factory=TradingPolicy)
     memory_policy: MemoryPolicy = Field(default_factory=MemoryPolicy)
@@ -196,6 +206,7 @@ class PlatformConfig(BaseModel):
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     compete: CompeteModeConfig = Field(default_factory=CompeteModeConfig)
+    universe: UniverseConfig = Field(default_factory=UniverseConfig)
 
 
 # Alias used by tests and scripts
@@ -251,6 +262,8 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     ]
     compete_cfg = CompeteModeConfig(**compete_data, stacks=compete_stacks)
 
+    universe_data = _load_yaml(root / "universe.yaml").get("universe", {})
+
     return PlatformConfig(
         trading_policy=TradingPolicy(**tp_data),
         memory_policy=MemoryPolicy(**mp_data),
@@ -260,4 +273,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         broker=BrokerConfig(**broker_data),
         notifications=NotificationConfig(**notif_data),
         compete=compete_cfg,
+        universe=UniverseConfig(**universe_data),
     )
