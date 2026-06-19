@@ -5,13 +5,20 @@ via `with_structured_output()`. The provider is selected per tier from
 llm_config.yaml — any tier can use a different vendor with no code changes.
 
 Supported providers (set via fast_provider / analysis_provider / report_provider):
-  anthropic    — ChatAnthropic       — env: ANTHROPIC_API_KEY
-  openai       — ChatOpenAI          — env: OPENAI_API_KEY
-  google       — ChatGoogleGenerativeAI — env: GOOGLE_API_KEY
-  mistral      — ChatMistralAI       — env: MISTRAL_API_KEY
-  groq         — ChatGroq            — env: GROQ_API_KEY
-  ollama       — ChatOllama          — no key (local server at OLLAMA_BASE_URL)
-  azure_openai — AzureChatOpenAI     — env: AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT
+  anthropic    — ChatAnthropic            — env: ANTHROPIC_API_KEY
+  openai       — ChatOpenAI              — env: OPENAI_API_KEY
+  openai_o     — ChatOpenAI (o-series)   — env: OPENAI_API_KEY  (o1/o3/o4-mini — no temperature)
+  google       — ChatGoogleGenerativeAI  — env: GOOGLE_API_KEY
+  mistral      — ChatMistralAI           — env: MISTRAL_API_KEY
+  groq         — ChatGroq                — env: GROQ_API_KEY
+  ollama       — ChatOllama              — no key (local server at OLLAMA_BASE_URL)
+  azure_openai — AzureChatOpenAI         — env: AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT
+
+Thinking / reasoning support per provider:
+  anthropic  — report_thinking_budget > 0 enables extended thinking (budget_tokens)
+  openai_o   — reasoning built-in; report_reasoning_effort = low|medium|high
+  google     — thinking automatic on gemini-2.5-* models; report_thinking_budget maps
+               to thinking_budget parameter in ChatGoogleGenerativeAI
 
 Every call site wraps invocations in try/except so deterministic logic always
 serves as a safe fallback when a provider is unavailable or misconfigured.
@@ -124,9 +131,33 @@ def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> 
     return ChatOpenAI(model=model, temperature=temperature, max_tokens=max_tokens, **kw)
 
 
+def _make_openai_o(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    """OpenAI o-series (o1/o3/o4-mini): reasoning is built-in, no temperature param.
+
+    Pass reasoning_effort via kw: {"reasoning_effort": "low"|"medium"|"high"}.
+    max_completion_tokens replaces max_tokens for o-series models.
+    """
+    from langchain_openai import ChatOpenAI
+    kw.pop("temperature", None)  # o-series rejects temperature
+    effort = kw.pop("reasoning_effort", "medium")
+    return ChatOpenAI(
+        model=model,
+        max_completion_tokens=max_tokens,
+        model_kwargs={"reasoning_effort": effort},
+        **kw,
+    )
+
+
 def _make_google(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    """Google Gemini. Gemini 2.5 models support thinking via thinking_budget param."""
     from langchain_google_genai import ChatGoogleGenerativeAI
-    return ChatGoogleGenerativeAI(model=model, temperature=temperature, max_output_tokens=max_tokens, **kw)
+    thinking_budget = kw.pop("thinking_budget", None)
+    init_kw: dict[str, Any] = dict(model=model, temperature=temperature, max_output_tokens=max_tokens, **kw)
+    if thinking_budget is not None:
+        # Gemini 2.5: thinking_config controls how many tokens the model may think.
+        # Pass 0 to disable, positive int to enable.
+        init_kw["thinking_config"] = {"thinking_budget": thinking_budget}
+    return ChatGoogleGenerativeAI(**init_kw)
 
 
 def _make_mistral(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
@@ -161,6 +192,7 @@ def _make_azure_openai(model: str, temperature: float, max_tokens: int, **kw: An
 _PROVIDERS: dict[str, tuple[str | None, Any]] = {
     "anthropic":    ("ANTHROPIC_API_KEY",    _make_anthropic),
     "openai":       ("OPENAI_API_KEY",       _make_openai),
+    "openai_o":     ("OPENAI_API_KEY",       _make_openai_o),   # o1/o3/o4-mini
     "google":       ("GOOGLE_API_KEY",       _make_google),
     "mistral":      ("MISTRAL_API_KEY",      _make_mistral),
     "groq":         ("GROQ_API_KEY",         _make_groq),
@@ -217,22 +249,42 @@ def get_analysis_llm(cfg: Any) -> Any | None:
 
 
 def get_report_llm(cfg: Any) -> Any | None:
-    """Return the report-generation LLM, with extended thinking for Anthropic."""
+    """Return the report-generation LLM with thinking/reasoning where supported.
+
+    Thinking support per provider:
+      anthropic  — report_thinking_budget > 0 enables extended thinking
+      openai_o   — reasoning built-in; report_reasoning_effort sets depth
+      google     — report_thinking_budget > 0 sets Gemini thinking_budget
+      all others — standard completion, no thinking params
+    """
     provider = getattr(cfg, "report_provider", "anthropic")
     if not _is_available(provider):
         return None
     try:
+        budget = getattr(cfg, "report_thinking_budget", 0)
+        effort = getattr(cfg, "report_reasoning_effort", "medium")
         extra: dict[str, Any] = {}
-        # Extended thinking is an Anthropic-specific feature.
+
         if provider == "anthropic":
-            budget = getattr(cfg, "report_thinking_budget", 0)
             if budget > 0:
                 extra["thinking"] = {"type": "enabled", "budget_tokens": budget}
-                extra["temperature"] = 1.0  # required for extended thinking
+                extra["temperature"] = 1.0  # required when extended thinking is on
             else:
                 extra["temperature"] = 0.3
+
+        elif provider == "openai_o":
+            # o1/o3/o4-mini: reasoning depth via reasoning_effort; no temperature
+            extra["reasoning_effort"] = effort
+
+        elif provider == "google":
+            # Gemini 2.5: pass thinking_budget (tokens); 0 disables thinking
+            if budget > 0:
+                extra["thinking_budget"] = budget
+            extra["temperature"] = 0.3
+
         else:
             extra["temperature"] = 0.3
+
         return _make_llm(provider, cfg.report_model, 0.3, cfg.report_max_tokens, **extra)
     except Exception as exc:
         logger.warning("Could not initialise report LLM (%s): %s", provider, exc)

@@ -134,8 +134,13 @@ class LLMConfig(BaseModel):
     report_provider: str = "anthropic"
     report_model: str = "claude-sonnet-4-6"
     report_max_tokens: int = 4096
-    # Extended thinking: Anthropic only. Set to 0 to disable or when using other providers.
+    # Thinking/reasoning config — provider-specific:
+    #   anthropic  → report_thinking_budget > 0 enables extended thinking (tokens)
+    #   google     → report_thinking_budget > 0 sets Gemini thinking_budget (tokens)
+    #   openai_o   → report_reasoning_effort = "low" | "medium" | "high"
+    #   all others → both fields ignored
     report_thinking_budget: int = 2000
+    report_reasoning_effort: str = "medium"  # for openai_o provider
 
     # Feature flags — disable individually to fall back to deterministic logic
     enable_catalyst_llm: bool = True
