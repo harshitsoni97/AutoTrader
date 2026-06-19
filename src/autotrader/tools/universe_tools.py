@@ -11,6 +11,8 @@ import requests
 logger = logging.getLogger(__name__)
 
 NSE_BASE = "https://www.nseindia.com"
+# niftyindices.com hosts the public constituent CSVs (nseindia.com path returns 404)
+NIFTY_INDICES_BASE = "https://www.niftyindices.com"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -19,17 +21,30 @@ HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://www.nseindia.com/",
+    "Referer": "https://www.niftyindices.com/",
     "Connection": "keep-alive",
 }
 
-# NSE index CSV endpoint mapping
+# Constituent CSVs live on niftyindices.com, not nseindia.com
 INDEX_CSV_MAP = {
-    "nifty50":   "/content/indices/ind_nifty50list.csv",
-    "nifty100":  "/content/indices/ind_nifty100list.csv",
-    "nifty200":  "/content/indices/ind_nifty200list.csv",
-    "nifty500":  "/content/indices/ind_nifty500list.csv",
+    "nifty50":  "/IndexConstituent/ind_nifty50list.csv",
+    "nifty100": "/IndexConstituent/ind_nifty100list.csv",
+    "nifty200": "/IndexConstituent/ind_nifty200list.csv",
+    "nifty500": "/IndexConstituent/ind_nifty500list.csv",
 }
+
+# NSE symbol corrections — rename events or splits that break yfinance lookups.
+# Applied to every symbol before it is passed to yfinance or NSE API calls.
+SYMBOL_CORRECTIONS: dict[str, str] = {
+    "ZOMATO": "ETERNAL",    # Zomato rebranded to Eternal Ltd on NSE
+    "M&M": "MM",            # yfinance drops & in ticker; NSE CSV uses M&M
+    "TATAMOTORS": "TMCV",  # Tata Motors demerged: TMCV (commercial), TMPV (passenger)
+}
+
+# Reverse map: what the CSV gives us → what yfinance/NSE API accepts
+def normalize_symbol(symbol: str) -> str:
+    """Return the canonical yfinance/NSE API symbol for a given NSE constituent name."""
+    return SYMBOL_CORRECTIONS.get(symbol.upper(), symbol.upper())
 
 # Fallback hardcoded set of 60 Nifty 500 symbols if CSV fetch fails
 _FALLBACK_SYMBOLS = [
@@ -55,8 +70,9 @@ _FALLBACK_SYMBOLS = [
     {"symbol": "DIVISLAB", "sector": "Pharma"},
     {"symbol": "AUROPHARMA", "sector": "Pharma"},
     {"symbol": "MARUTI", "sector": "Auto"},
-    {"symbol": "TATAMOTOR", "sector": "Auto"},
-    {"symbol": "MAHINDRA", "sector": "Auto"},
+    {"symbol": "TMCV", "sector": "Auto"},   # Tata Motors Commercial Vehicles
+    {"symbol": "TMPV", "sector": "Auto"},   # Tata Motors Passenger Vehicles
+    {"symbol": "MM", "sector": "Auto"},
     {"symbol": "BAJAJ-AUTO", "sector": "Auto"},
     {"symbol": "HEROMOTOCO", "sector": "Auto"},
     {"symbol": "DLF", "sector": "Realty"},
@@ -97,28 +113,34 @@ _FALLBACK_SYMBOLS = [
 
 
 def fetch_index_constituents(index: str = "nifty500", max_count: int = 100) -> list[dict]:
-    """Fetch NSE index constituent list from NSE CSV.
-    
-    Returns list of {symbol, sector, name} dicts.
+    """Fetch NSE index constituent list from niftyindices.com CSV.
+
+    CSV format: Company Name,Industry,Symbol,Series,ISIN Code
     Falls back to hardcoded list if fetch fails.
     """
     path = INDEX_CSV_MAP.get(index.lower(), INDEX_CSV_MAP["nifty500"])
     try:
-        session = requests.Session()
-        session.get(NSE_BASE, headers=HEADERS, timeout=15)
-        import time; time.sleep(0.3)
-        resp = session.get(f"{NSE_BASE}{path}", headers={**HEADERS, "Accept": "text/csv,*/*"}, timeout=15)
+        import time
+        resp = requests.get(
+            f"{NIFTY_INDICES_BASE}{path}",
+            headers={**HEADERS, "Accept": "text/csv,*/*"},
+            timeout=15,
+        )
         resp.raise_for_status()
         lines = resp.text.strip().split("\n")
-        # CSV format: Company Name,Industry,Symbol,Series,ISIN Code
         result = []
         for line in lines[1:]:  # skip header
             parts = line.split(",")
             if len(parts) >= 3:
-                symbol = parts[2].strip().strip('"')
+                raw_symbol = parts[2].strip().strip('"')
                 industry = parts[1].strip().strip('"')
+                symbol = normalize_symbol(raw_symbol)
                 if symbol:
-                    result.append({"symbol": symbol, "sector": _map_industry(industry), "name": parts[0].strip().strip('"')})
+                    result.append({
+                        "symbol": symbol,
+                        "sector": _map_industry(industry),
+                        "name": parts[0].strip().strip('"'),
+                    })
         logger.info("Fetched %d constituents from %s", len(result), index)
         return result[:max_count]
     except Exception as e:
@@ -163,8 +185,8 @@ def momentum_screen(symbols: list[dict], top_n: int = 50) -> list[dict]:
         logger.warning("yfinance not available for momentum screen")
         return [{**s, "source": "index", "momentum_score": 50} for s in symbols[:top_n]]
 
-    tickers = [f"{s['symbol']}.NS" for s in symbols]
-    sym_map = {f"{s['symbol']}.NS": s for s in symbols}
+    tickers = [f"{normalize_symbol(s['symbol'])}.NS" for s in symbols]
+    sym_map = {f"{normalize_symbol(s['symbol'])}.NS": s for s in symbols}
     scored = []
 
     # Batch download for efficiency
