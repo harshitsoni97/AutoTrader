@@ -190,6 +190,49 @@ class Notifier:
         )
         return self.send(subject, body)
 
+    def notify_pre_market_summary(self, state: dict) -> dict[str, bool]:
+        if not self.cfg.notify_on_daily_summary:
+            return {}
+        regime = state.get("market_regime", "unknown")
+        confidence = state.get("market_confidence", 0.0)
+        top_sectors = state.get("top_sectors", [])
+        opportunities = state.get("scored_opportunities", [])
+        catalysts = state.get("catalysts", [])
+        vix = state.get("india_vix", 0.0)
+        pcr = state.get("options_pcr", 0.0)
+        run_date = state.get("run_date", "")
+        dry_run = state.get("dry_run", True)
+        mode = "DRY RUN" if dry_run else "LIVE"
+
+        regime_emoji = {
+            "bullish": "🟢", "risk_on": "🟢",
+            "bearish": "🔴", "risk_off": "🔴",
+            "high_volatility": "🟡",
+            "range_bound": "⚪",
+        }.get(regime, "⚪")
+
+        subject = f"{regime_emoji} Pre-Market [{mode}] — {run_date}"
+
+        top_pick_line = "No eligible opportunity"
+        if opportunities:
+            top = opportunities[0]
+            top_pick_line = f"{top['symbol']} — score {top.get('score', 0):.1f}"
+
+        top_catalyst_line = "None"
+        if catalysts:
+            c = catalysts[0]
+            top_catalyst_line = f"{c['symbol']}: {c.get('reason', '')[:60]}"
+
+        body = (
+            f"Regime: {regime} ({confidence*100:.0f}% confidence)\n"
+            f"VIX: {vix:.1f}  |  PCR: {pcr:.2f}\n"
+            f"Top sectors: {', '.join(top_sectors[:3]) or 'n/a'}\n"
+            f"\nTop pick: {top_pick_line}\n"
+            f"Top catalyst: {top_catalyst_line}\n"
+            f"\nEligible opportunities: {len(opportunities)}"
+        )
+        return self.send(subject, body)
+
     def notify_error(self, context: str, error: str) -> dict[str, bool]:
         if not self.cfg.notify_on_error:
             return {}

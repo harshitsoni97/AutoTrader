@@ -10,6 +10,7 @@ from autotrader.core.llm import ScoringReview, get_analysis_llm, structured
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.prompts import get_prompt
 from autotrader.core.state import TradingState
+from autotrader.tools.notifications import get_notifier
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,10 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
     )
 
     logger.info("[%s] %d candidates scored, %d above threshold %.0f", AGENT_NAME, len(scored), len(eligible), policy.minimum_score)
+
+    # Send pre-market summary notification (uses state context built up so far)
+    summary_state = {**state, "scored_opportunities": eligible}
+    get_notifier(cfg.notifications).notify_pre_market_summary(summary_state)
 
     return {
         "scored_opportunities": eligible,
