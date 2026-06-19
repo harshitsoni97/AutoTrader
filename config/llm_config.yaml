@@ -41,15 +41,19 @@ llm:
   report_provider: "anthropic"
   report_model: "claude-opus-4-8"       # strongest structured output + extended thinking
   report_max_tokens: 4096
-  # Thinking / reasoning — provider-specific (set the one that matches your provider):
-  #   anthropic  → report_thinking_budget (token budget, >0 enables; requires temperature=1.0 auto-set)
-  #   google     → report_thinking_budget (Gemini 2.5 thinking token budget)
-  #   openai_o   → report_reasoning_effort (low | medium | high; budget field ignored)
-  #   all others → both fields ignored
-  report_thinking_budget: 2000      # anthropic / google
-  report_reasoning_effort: "medium" # openai_o (o1/o3/o4-mini)
-  # OpenAI o-series:  report_provider: "openai_o"  report_model: "o4-mini"  report_reasoning_effort: "medium"  report_thinking_budget: 0
-  # Google thinking:  report_provider: "google"    report_model: "gemini-2.5-pro"  report_thinking_budget: 8000
+  # Thinking / reasoning — provider-specific:
+  #   anthropic → report_thinking_budget > 0 enables extended thinking
+  #   openai    → report_reasoning_effort = "low"|"medium"|"high" adds reasoning tokens
+  #               gpt-5.4-mini, gpt-5.4, gpt-5.5 ALL support reasoning + temperature together
+  #               set "" to disable reasoning (standard completion)
+  #   openai_o  → report_reasoning_effort only (o-series rejects temperature entirely)
+  #   google    → report_thinking_budget > 0 sets Gemini thinking_budget
+  report_thinking_budget: 2000        # anthropic / google: reasoning token budget
+  report_reasoning_effort: "medium"   # openai / openai_o: low | medium | high | ""
+  #
+  # All-OpenAI + reasoning: report_provider: "openai"  report_model: "gpt-5.5"  report_reasoning_effort: "high"
+  # OpenAI budget thinking: report_provider: "openai"  report_model: "gpt-5.4 mini"  report_reasoning_effort: "medium"
+  # Google thinking:        report_provider: "google"  report_model: "gemini-3.5-flash"  report_thinking_budget: 2000
 
   # ── Feature flags ────────────────────────────────────────────────────────────
   # Disable any flag to use the pure-deterministic fallback (no API call made).

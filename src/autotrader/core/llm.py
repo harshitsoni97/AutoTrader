@@ -127,18 +127,30 @@ def _make_anthropic(model: str, temperature: float, max_tokens: int, **kw: Any) 
 
 
 def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
+    """OpenAI GPT models (gpt-5.4-mini, gpt-5.4, gpt-5.5 etc).
+
+    All GPT-5.x models support reasoning tokens via reasoning_effort.
+    Unlike o-series, they also accept temperature — both work together.
+    reasoning_effort: "low" | "medium" | "high" | "" (empty = no reasoning)
+    """
     from langchain_openai import ChatOpenAI
-    return ChatOpenAI(model=model, temperature=temperature, max_tokens=max_tokens, **kw)
+    effort = kw.pop("reasoning_effort", "")
+    model_kwargs: dict[str, Any] = {}
+    if effort:
+        model_kwargs["reasoning_effort"] = effort
+    return ChatOpenAI(
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        model_kwargs=model_kwargs or None,  # type: ignore[arg-type]
+        **kw,
+    )
 
 
 def _make_openai_o(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
-    """OpenAI o-series (o1/o3/o4-mini): reasoning is built-in, no temperature param.
-
-    Pass reasoning_effort via kw: {"reasoning_effort": "low"|"medium"|"high"}.
-    max_completion_tokens replaces max_tokens for o-series models.
-    """
+    """OpenAI o-series (o1/o3/o4-mini): reasoning built-in, rejects temperature param."""
     from langchain_openai import ChatOpenAI
-    kw.pop("temperature", None)  # o-series rejects temperature
+    kw.pop("temperature", None)
     effort = kw.pop("reasoning_effort", "medium")
     return ChatOpenAI(
         model=model,
@@ -251,18 +263,19 @@ def get_analysis_llm(cfg: Any) -> Any | None:
 def get_report_llm(cfg: Any) -> Any | None:
     """Return the report-generation LLM with thinking/reasoning where supported.
 
-    Thinking support per provider:
-      anthropic  — report_thinking_budget > 0 enables extended thinking
-      openai_o   — reasoning built-in; report_reasoning_effort sets depth
-      google     — report_thinking_budget > 0 sets Gemini thinking_budget
-      all others — standard completion, no thinking params
+    Reasoning support per provider:
+      anthropic  — report_thinking_budget > 0 enables extended thinking (budget_tokens)
+      openai     — report_reasoning_effort = low|medium|high adds reasoning tokens
+                   (gpt-5.4-mini/5.4/5.5 all support reasoning; temperature still accepted)
+      openai_o   — report_reasoning_effort sets depth; temperature rejected by API
+      google     — report_thinking_budget > 0 sets Gemini thinking_budget (tokens)
     """
     provider = getattr(cfg, "report_provider", "anthropic")
     if not _is_available(provider):
         return None
     try:
         budget = getattr(cfg, "report_thinking_budget", 0)
-        effort = getattr(cfg, "report_reasoning_effort", "medium")
+        effort = getattr(cfg, "report_reasoning_effort", "")
         extra: dict[str, Any] = {}
 
         if provider == "anthropic":
@@ -272,12 +285,18 @@ def get_report_llm(cfg: Any) -> Any | None:
             else:
                 extra["temperature"] = 0.3
 
+        elif provider == "openai":
+            # GPT-5.x: supports reasoning_effort alongside temperature.
+            # Empty string disables reasoning (standard completion).
+            extra["temperature"] = 0.3
+            if effort:
+                extra["reasoning_effort"] = effort
+
         elif provider == "openai_o":
-            # o1/o3/o4-mini: reasoning depth via reasoning_effort; no temperature
-            extra["reasoning_effort"] = effort
+            # o-series: reasoning built-in, temperature rejected by API.
+            extra["reasoning_effort"] = effort or "medium"
 
         elif provider == "google":
-            # Gemini 2.5: pass thinking_budget (tokens); 0 disables thinking
             if budget > 0:
                 extra["thinking_budget"] = budget
             extra["temperature"] = 0.3
