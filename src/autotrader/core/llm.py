@@ -127,35 +127,45 @@ def _make_anthropic(model: str, temperature: float, max_tokens: int, **kw: Any) 
 
 
 def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
-    """OpenAI GPT models (gpt-5.4-mini, gpt-5.4, gpt-5.5 etc).
+    """OpenAI GPT-5.x reasoning models via Chat Completions API.
 
-    All GPT-5.x models support reasoning tokens via reasoning_effort.
-    Unlike o-series, they also accept temperature — both work together.
-    reasoning_effort: "low" | "medium" | "high" | "" (empty = no reasoning)
+    All GPT-5.x (gpt-5.4-mini, gpt-5.4, gpt-5.5, gpt-5.5-pro) are reasoning
+    models. Reasoning is controlled via reasoning={"effort": ...} in the request
+    body. Supported effort levels: none | minimal | low | medium | high | xhigh.
+    Empty string disables reasoning (pure Chat Completions, no reasoning tokens).
+
+    NOTE: OpenAI recommends the Responses API for reasoning models for best
+    intelligence and performance. LangChain's ChatOpenAI uses Chat Completions.
+    Both APIs are supported by OpenAI; switch to OpenAI SDK directly if you need
+    the Responses API (interleaved thinking, webhooks, background mode).
+
+    o-series models (o1/o3/o4-mini) use openai_o provider — they reject temperature.
     """
     from langchain_openai import ChatOpenAI
     effort = kw.pop("reasoning_effort", "")
-    model_kwargs: dict[str, Any] = {}
+    extra_body: dict[str, Any] = {}
     if effort:
-        model_kwargs["reasoning_effort"] = effort
+        # Correct OpenAI parameter format: reasoning={"effort": "medium"}
+        # Passed via extra_body so it reaches the API regardless of LangChain version
+        extra_body["reasoning"] = {"effort": effort}
     return ChatOpenAI(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
-        model_kwargs=model_kwargs or None,  # type: ignore[arg-type]
+        extra_body=extra_body or None,  # type: ignore[arg-type]
         **kw,
     )
 
 
 def _make_openai_o(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
-    """OpenAI o-series (o1/o3/o4-mini): reasoning built-in, rejects temperature param."""
+    """OpenAI o-series (o1/o3/o4-mini) — rejects temperature, reasoning built-in."""
     from langchain_openai import ChatOpenAI
     kw.pop("temperature", None)
     effort = kw.pop("reasoning_effort", "medium")
     return ChatOpenAI(
         model=model,
         max_completion_tokens=max_tokens,
-        model_kwargs={"reasoning_effort": effort},
+        extra_body={"reasoning": {"effort": effort}},
         **kw,
     )
 

@@ -135,12 +135,21 @@ class LLMConfig(BaseModel):
     report_model: str = "claude-sonnet-4-6"
     report_max_tokens: int = 4096
     # Thinking/reasoning config — provider-specific:
-    #   anthropic  → report_thinking_budget > 0 enables extended thinking (tokens)
+    #   anthropic  → report_thinking_budget > 0 enables extended thinking (budget_tokens)
     #   google     → report_thinking_budget > 0 sets Gemini thinking_budget (tokens)
-    #   openai_o   → report_reasoning_effort = "low" | "medium" | "high"
+    #   openai     → report_reasoning_effort sets reasoning depth for GPT-5.x models
+    #                correct API format: reasoning={"effort": effort}
+    #                levels: "" (off) | none | minimal | low | medium | high | xhigh
+    #   openai_o   → same effort levels; temperature is rejected by o-series API
     #   all others → both fields ignored
     report_thinking_budget: int = 2000
-    report_reasoning_effort: str = "medium"  # for openai_o provider
+    # OpenAI reasoning effort levels (none/minimal/low/medium/high/xhigh):
+    #   none/minimal → latency-critical tasks (voice, classification)
+    #   low          → tool-use, planning, multi-step — fast + cheap
+    #   medium       → default; quality + reliability for agentic tasks
+    #   high         → complex reasoning, deep planning — our trade veto gate
+    #   xhigh        → deep research, async workflows — rarely needed here
+    report_reasoning_effort: str = "high"  # openai / openai_o: high suits trade veto
 
     # Feature flags — disable individually to fall back to deterministic logic
     enable_catalyst_llm: bool = True
