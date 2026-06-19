@@ -86,6 +86,49 @@ llm:
   enable_scoring_llm: true
   enable_report_llm: true
 
+# ── Compete mode ─────────────────────────────────────────────────────────────
+# When enabled: the compete graph runs every competitor's model through the
+# LLM scoring review. At end of day, compete_evaluator ranks them by
+# hypothetical PnL (entry = price at pick time, exit = closing price).
+#
+# dry_run: true  → collect picks only; no real orders for any competitor
+# dry_run: false → primary competitor drives real execution; others tracked
+# primary: name of the competitor that drives real orders (actual mode only)
+#
+# Each competitor fields:
+#   name             display label shown in leaderboard
+#   provider         anthropic | openai | google | mistral | groq | ollama
+#   model            exact model string
+#   temperature      0.0-1.0 (ignored by o-series)
+#   max_tokens       output token budget
+#   reasoning_effort openai / openai_o: none|low|medium|high|xhigh
+#   thinking_budget  anthropic / google: token budget (0 = disabled)
+compete:
+  enabled: false         # set to true to activate
+  dry_run: true
+  primary: ""            # e.g. "Claude Opus 4.8" — only matters when dry_run: false
+  competitors:
+    - name: "Claude Opus 4.8"
+      provider: "anthropic"
+      model: "claude-opus-4-8"
+      temperature: 0.2
+      max_tokens: 1024
+      thinking_budget: 1500
+
+    - name: "GPT-5.4 Mini"
+      provider: "openai"
+      model: "gpt-5.4 mini"
+      temperature: 0.2
+      max_tokens: 1024
+      reasoning_effort: "medium"
+
+    - name: "Gemini 2.5 Flash"
+      provider: "google"
+      model: "gemini-2.5-flash"
+      temperature: 0.2
+      max_tokens: 1024
+      thinking_budget: 1000
+
 # ── LLMOps ───────────────────────────────────────────────────────────────────
 # backend: "langsmith" | "mlflow" | "none"
 llmops:

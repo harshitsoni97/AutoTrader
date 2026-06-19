@@ -61,10 +61,13 @@ def _llm_review_opportunities(
     top3: list[dict],
     regime: str,
     confidence: float,
-    llm_cfg: Any,
+    llm: Any,
 ) -> dict:
-    """Analysis LLM holistically reviews top 3 and can adjust the winner's score by ±5."""
-    llm = get_analysis_llm(llm_cfg)
+    """Analysis LLM holistically reviews top 3 and can adjust the winner's score by ±5.
+
+    Accepts a pre-built LangChain chat model so the compete coordinator can
+    call this with any competitor's model without re-building LLM config.
+    """
     if llm is None:
         return {}
 
@@ -175,7 +178,7 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
     # Optional LLM holistic review of the top 3 candidates
     llm_review: dict = {}
     if cfg.llm.enable_scoring_llm and scored:
-        llm_review = _llm_review_opportunities(scored[:3], market_regime, market_confidence, cfg.llm)
+        llm_review = _llm_review_opportunities(scored[:3], market_regime, market_confidence, get_analysis_llm(cfg.llm))
         if llm_review:
             top_sym = llm_review.get("top_symbol")
             adjustment = llm_review.get("score_adjustment", 0.0)

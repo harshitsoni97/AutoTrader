@@ -73,6 +73,9 @@ class TradingState(TypedDict):
     agent_scores: dict[str, float]
     learning_report_path: str
 
+    # Compete mode — one entry per competitor, filled by compete_coordinator
+    competitor_results: list[dict]
+
 
 def create_initial_state(session_type: str = "pre_market") -> TradingState:
     cfg = load_config()
@@ -117,4 +120,5 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
         trade_outcomes=[],
         agent_scores={},
         learning_report_path="",
+        competitor_results=[],
     )

@@ -318,6 +318,32 @@ def get_report_llm(cfg: Any) -> Any | None:
         return None
 
 
+def make_competitor_llm(competitor: Any) -> Any | None:
+    """Build an LLM instance from a CompetitorConfig for compete mode.
+
+    Handles provider-specific reasoning/thinking config so each competitor
+    can use extended thinking or reasoning effort independently.
+    """
+    provider = competitor.provider
+    if not _is_available(provider):
+        logger.warning("Competitor %r provider %r unavailable (no API key)", competitor.name, provider)
+        return None
+    try:
+        extra: dict[str, Any] = {}
+        if competitor.reasoning_effort:
+            extra["reasoning_effort"] = competitor.reasoning_effort
+        if competitor.thinking_budget > 0:
+            if provider == "anthropic":
+                extra["thinking"] = {"type": "enabled", "budget_tokens": competitor.thinking_budget}
+                extra["temperature"] = 1.0   # required for extended thinking
+            elif provider == "google":
+                extra["thinking_budget"] = competitor.thinking_budget
+        return _make_llm(provider, competitor.model, competitor.temperature, competitor.max_tokens, **extra)
+    except Exception as exc:
+        logger.warning("Could not initialise competitor LLM %r (%s/%s): %s", competitor.name, provider, competitor.model, exc)
+        return None
+
+
 def structured(llm: Any, schema: type[BaseModel]) -> Any:
     """Bind a Pydantic schema to an LLM via with_structured_output."""
     return llm.with_structured_output(schema)

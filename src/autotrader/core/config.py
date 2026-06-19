@@ -158,6 +158,25 @@ class LLMConfig(BaseModel):
     enable_report_llm: bool = True
 
 
+class CompetitorConfig(BaseModel):
+    """A single model entry in compete mode."""
+    name: str                           # Display name, e.g. "Claude Opus 4.8"
+    provider: str                       # anthropic | openai | google | ...
+    model: str
+    temperature: float = 0.2
+    max_tokens: int = 1024
+    reasoning_effort: str = ""          # openai / openai_o: none|low|medium|high|xhigh
+    thinking_budget: int = 0            # anthropic / google: tokens; 0 = disabled
+
+
+class CompeteModeConfig(BaseModel):
+    """Compete mode: run multiple models side-by-side and rank by end-of-day PnL."""
+    enabled: bool = False
+    dry_run: bool = True                # True → no real orders for any competitor
+    primary: str = ""                   # name of competitor that drives real execution (actual mode only)
+    competitors: List[CompetitorConfig] = Field(default_factory=list)
+
+
 class PlatformConfig(BaseModel):
     trading_policy: TradingPolicy = Field(default_factory=TradingPolicy)
     memory_policy: MemoryPolicy = Field(default_factory=MemoryPolicy)
@@ -166,6 +185,7 @@ class PlatformConfig(BaseModel):
     llmops: LLMOpsConfig = Field(default_factory=LLMOpsConfig)
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
+    compete: CompeteModeConfig = Field(default_factory=CompeteModeConfig)
 
 
 # Alias used by tests and scripts
@@ -188,6 +208,7 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     llm_cfg_file = _load_yaml(root / "llm_config.yaml")
     llm_data = llm_cfg_file.get("llm", {})
     llmops_data = llm_cfg_file.get("llmops", {})
+    compete_data = llm_cfg_file.get("compete", {})
     broker_data = _load_yaml(root / "broker_config.yaml").get("broker", {})
     notif_data = _load_yaml(root / "notifications.yaml").get("notifications", {})
 
@@ -214,6 +235,12 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     if os.getenv("NOTIFICATION_CHANNELS"):
         notif_data["channels"] = [c.strip() for c in os.getenv("NOTIFICATION_CHANNELS").split(",") if c.strip()]
 
+    # Parse competitors list inside compete section
+    compete_competitors = [
+        CompetitorConfig(**c) for c in compete_data.pop("competitors", [])
+    ]
+    compete_cfg = CompeteModeConfig(**compete_data, competitors=compete_competitors)
+
     return PlatformConfig(
         trading_policy=TradingPolicy(**tp_data),
         memory_policy=MemoryPolicy(**mp_data),
@@ -222,4 +249,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         llmops=LLMOpsConfig(**llmops_data),
         broker=BrokerConfig(**broker_data),
         notifications=NotificationConfig(**notif_data),
+        compete=compete_cfg,
     )
