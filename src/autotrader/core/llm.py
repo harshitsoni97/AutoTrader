@@ -6,7 +6,7 @@ llm_config.yaml — any tier can use a different vendor with no code changes.
 
 Supported providers (set via fast_provider / analysis_provider / report_provider):
   anthropic    — ChatAnthropic            — env: ANTHROPIC_API_KEY
-  openai       — ChatOpenAI              — env: OPENAI_API_KEY
+  openai       — ChatOpenAI (Responses API) — env: OPENAI_API_KEY
   openai_o     — ChatOpenAI (o-series)   — env: OPENAI_API_KEY  (o1/o3/o4-mini — no temperature)
   google       — ChatGoogleGenerativeAI  — env: GOOGLE_API_KEY
   mistral      — ChatMistralAI           — env: MISTRAL_API_KEY
@@ -127,17 +127,16 @@ def _make_anthropic(model: str, temperature: float, max_tokens: int, **kw: Any) 
 
 
 def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
-    """OpenAI GPT-5.x reasoning models via Chat Completions API.
+    """OpenAI GPT-5.x reasoning models via the Responses API.
 
     All GPT-5.x (gpt-5.4-mini, gpt-5.4, gpt-5.5, gpt-5.5-pro) are reasoning
     models. Reasoning is controlled via reasoning={"effort": ...} in the request
     body. Supported effort levels: none | minimal | low | medium | high | xhigh.
-    Empty string disables reasoning (pure Chat Completions, no reasoning tokens).
+    Empty string disables reasoning (no reasoning tokens).
 
-    NOTE: OpenAI recommends the Responses API for reasoning models for best
-    intelligence and performance. LangChain's ChatOpenAI uses Chat Completions.
-    Both APIs are supported by OpenAI; switch to OpenAI SDK directly if you need
-    the Responses API (interleaved thinking, webhooks, background mode).
+    use_responses_api=True routes ChatOpenAI through OpenAI's Responses API
+    instead of Chat Completions — recommended for reasoning models (interleaved
+    thinking, better intelligence, streaming support).
 
     o-series models (o1/o3/o4-mini) use openai_o provider — they reject temperature.
     """
@@ -145,13 +144,12 @@ def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> 
     effort = kw.pop("reasoning_effort", "")
     extra_body: dict[str, Any] = {}
     if effort:
-        # Correct OpenAI parameter format: reasoning={"effort": "medium"}
-        # Passed via extra_body so it reaches the API regardless of LangChain version
         extra_body["reasoning"] = {"effort": effort}
     return ChatOpenAI(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
+        use_responses_api=True,
         extra_body=extra_body or None,  # type: ignore[arg-type]
         **kw,
     )
