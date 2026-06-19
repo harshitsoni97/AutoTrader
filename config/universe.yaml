@@ -1,8 +1,8 @@
 universe:
-  index: "nifty500"
-  max_from_index: 100
+  index: "nifty500"        # nifty50 | nifty100 | nifty200 | nifty500
+  max_from_index: 100      # how many base constituents to pull
   include_corporate_events: true
   include_block_deals: true
-  include_chartink: false
-  include_preopen: false
-  max_total: 80
+  include_chartink: false  # off by default (scraping)
+  include_preopen: false   # on only during 9:00-9:08 IST
+  max_total: 80            # hard cap on final universe size

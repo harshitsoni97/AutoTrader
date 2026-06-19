@@ -32,7 +32,7 @@ CATALYST_SCORES = {
 # Sector-to-symbol mapping for catalyst discovery
 _FALLBACK_SECTOR_WATCHLIST = {
     "Banking": ["HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN", "KOTAKBANK"],
-    "Capital_Goods": ["LT", "BEL", "HAL", "BHEL", "ABB"],
+    "Capital_Goods": ["L&T", "BEL", "HAL", "BHEL", "ABB"],
     "IT": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM"],
     "Pharma": ["SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB", "AUROPHARMA"],
     "Auto": ["MARUTI", "TATAMOTORS", "M&M", "BAJAJ-AUTO", "HEROMOTOCO"],
@@ -40,7 +40,7 @@ _FALLBACK_SECTOR_WATCHLIST = {
     "Metal": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "SAIL"],
     "Energy": ["RELIANCE", "ONGC", "BPCL", "IOC", "POWERGRID"],
     "FMCG": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "DABUR"],
-    "Midcap": ["POLYCAB", "DELHIVERY", "ETERNAL", "NAUKRI", "IRCTC"],
+    "Midcap": ["POLYCAB", "DELHIVERY", "ZOMATO", "NAUKRI", "IRCTC"],
 }
 
 
@@ -78,13 +78,10 @@ def _score_corporate_actions(symbol: str, actions: list[dict]) -> list[dict]:
 def _llm_enrich_catalysts(
     catalysts: list[dict],
     market_regime: str,
-    llm: Any,
+    llm_cfg: Any,
 ) -> list[dict]:
-    """Use fast LLM to refine scores on the top 5 catalysts (with Pydantic enforcement).
-
-    Accepts a pre-built LangChain chat model so the compete coordinator can
-    call this with any stack's fast LLM without re-building config.
-    """
+    """Use fast LLM to refine scores on the top 5 catalysts (with Pydantic enforcement)."""
+    llm = get_fast_llm(llm_cfg)
     if llm is None:
         return catalysts
 
@@ -128,24 +125,23 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
 
     # 2. Corporate actions for watchlist symbols
     top_sectors = state.get("top_sectors", [])
-    universe = state.get("universe", [])
-
-    # Build sector map from dynamic universe if available, else fall back to hardcoded list
+    # Use dynamic universe if available, else fall back to hardcoded watchlist
+    universe: list[dict] = state.get("universe", [])
     if universe:
-        universe_sector_map: dict[str, list[str]] = {}
-        for entry in universe:
-            universe_sector_map.setdefault(entry.get("sector", "Unknown"), []).append(entry["symbol"])
-        sector_watchlist = universe_sector_map
+        symbols_to_check = [e["symbol"] for e in universe][:20]
+        sector_symbols_map: dict[str, list[str]] = {}
+        for e in universe:
+            sec = e.get("sector", "Unknown")
+            sector_symbols_map.setdefault(sec, []).append(e["symbol"])
     else:
-        sector_watchlist = _FALLBACK_SECTOR_WATCHLIST
-
-    symbols_to_check: list[str] = []
-    for sector in top_sectors:
-        symbols_to_check.extend(sector_watchlist.get(sector, []))
-    # Also scan all sectors for high-scoring actions
-    for sector, syms in sector_watchlist.items():
-        symbols_to_check.extend(syms[:2])
-    symbols_to_check = list(set(symbols_to_check))[:20]
+        top_sectors = state.get("top_sectors", [])
+        symbols_to_check = []
+        for sector in top_sectors:
+            symbols_to_check.extend(_FALLBACK_SECTOR_WATCHLIST.get(sector, []))
+        for sector, syms in _FALLBACK_SECTOR_WATCHLIST.items():
+            symbols_to_check.extend(syms[:2])
+        symbols_to_check = list(set(symbols_to_check))[:20]
+        sector_symbols_map = _FALLBACK_SECTOR_WATCHLIST
 
     for symbol in symbols_to_check:
         actions = get_corporate_actions(symbol)
@@ -153,8 +149,9 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
 
     # 3. Prioritise sector-aligned catalysts
     sector_symbols: set[str] = set()
+    top_sectors = state.get("top_sectors", [])
     for sector in top_sectors:
-        sector_symbols.update(sector_watchlist.get(sector, []))
+        sector_symbols.update(sector_symbols_map.get(sector, []))
 
     for cat in all_catalysts:
         if cat["symbol"] in sector_symbols:
@@ -169,14 +166,11 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
 
     final_catalysts = sorted(by_symbol.values(), key=lambda x: x["catalyst_score"], reverse=True)
 
-    # Store raw (pre-LLM) catalysts so compete coordinator can re-enrich per stack
-    raw_catalysts = [dict(c) for c in final_catalysts]
-
     # Optional LLM enrichment — refines scores with market context
     cfg = load_config()
     if cfg.llm.enable_catalyst_llm:
         market_regime = state.get("market_regime", "unknown")
-        final_catalysts = _llm_enrich_catalysts(final_catalysts, market_regime, get_fast_llm(cfg.llm))
+        final_catalysts = _llm_enrich_catalysts(final_catalysts, market_regime, cfg.llm)
         final_catalysts.sort(key=lambda x: x["catalyst_score"], reverse=True)
 
     msg = create_message(
@@ -194,7 +188,6 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
 
     return {
         "catalysts": final_catalysts,
-        "raw_catalysts": raw_catalysts,
         "messages": [msg],
         "audit_trail": [entry],
     }

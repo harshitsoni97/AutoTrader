@@ -23,13 +23,15 @@ HEADERS = {
     "Connection": "keep-alive",
 }
 
+# NSE index CSV endpoint mapping
 INDEX_CSV_MAP = {
-    "nifty50":  "/content/indices/ind_nifty50list.csv",
-    "nifty100": "/content/indices/ind_nifty100list.csv",
-    "nifty200": "/content/indices/ind_nifty200list.csv",
-    "nifty500": "/content/indices/ind_nifty500list.csv",
+    "nifty50":   "/content/indices/ind_nifty50list.csv",
+    "nifty100":  "/content/indices/ind_nifty100list.csv",
+    "nifty200":  "/content/indices/ind_nifty200list.csv",
+    "nifty500":  "/content/indices/ind_nifty500list.csv",
 }
 
+# Fallback hardcoded set of 60 Nifty 500 symbols if CSV fetch fails
 _FALLBACK_SYMBOLS = [
     {"symbol": "RELIANCE", "sector": "Energy"},
     {"symbol": "TCS", "sector": "IT"},
@@ -84,43 +86,39 @@ _FALLBACK_SYMBOLS = [
     {"symbol": "BAJAJFINSV", "sector": "Banking"},
     {"symbol": "NTPC", "sector": "Energy"},
     {"symbol": "ADANIPORTS", "sector": "Capital_Goods"},
+    {"symbol": "ADANIENT", "sector": "Energy"},
     {"symbol": "ULTRACEMCO", "sector": "Capital_Goods"},
+    {"symbol": "GRASIM", "sector": "Capital_Goods"},
     {"symbol": "TITAN", "sector": "FMCG"},
     {"symbol": "INDUSINDBK", "sector": "Banking"},
     {"symbol": "COALINDIA", "sector": "Energy"},
     {"symbol": "HDFCLIFE", "sector": "Banking"},
-    {"symbol": "MM", "sector": "Auto"},
-    {"symbol": "GRASIM", "sector": "Capital_Goods"},
-    {"symbol": "ADANIENT", "sector": "Energy"},
 ]
 
 
 def fetch_index_constituents(index: str = "nifty500", max_count: int = 100) -> list[dict]:
-    """Fetch NSE index constituent list. Falls back to hardcoded list if fetch fails."""
+    """Fetch NSE index constituent list from NSE CSV.
+    
+    Returns list of {symbol, sector, name} dicts.
+    Falls back to hardcoded list if fetch fails.
+    """
     path = INDEX_CSV_MAP.get(index.lower(), INDEX_CSV_MAP["nifty500"])
     try:
         session = requests.Session()
         session.get(NSE_BASE, headers=HEADERS, timeout=15)
         import time; time.sleep(0.3)
-        resp = session.get(
-            f"{NSE_BASE}{path}",
-            headers={**HEADERS, "Accept": "text/csv,*/*"},
-            timeout=15,
-        )
+        resp = session.get(f"{NSE_BASE}{path}", headers={**HEADERS, "Accept": "text/csv,*/*"}, timeout=15)
         resp.raise_for_status()
         lines = resp.text.strip().split("\n")
+        # CSV format: Company Name,Industry,Symbol,Series,ISIN Code
         result = []
-        for line in lines[1:]:
+        for line in lines[1:]:  # skip header
             parts = line.split(",")
             if len(parts) >= 3:
                 symbol = parts[2].strip().strip('"')
                 industry = parts[1].strip().strip('"')
                 if symbol:
-                    result.append({
-                        "symbol": symbol,
-                        "sector": _map_industry(industry),
-                        "name": parts[0].strip().strip('"'),
-                    })
+                    result.append({"symbol": symbol, "sector": _map_industry(industry), "name": parts[0].strip().strip('"')})
         logger.info("Fetched %d constituents from %s", len(result), index)
         return result[:max_count]
     except Exception as e:
@@ -129,33 +127,38 @@ def fetch_index_constituents(index: str = "nifty500", max_count: int = 100) -> l
 
 
 def _map_industry(industry: str) -> str:
-    """Map NSE industry string to our internal sector names."""
-    il = industry.lower()
-    if any(k in il for k in ["bank", "finance", "insurance", "nbfc"]):
+    """Map NSE industry string to our sector names."""
+    industry_lower = industry.lower()
+    if any(k in industry_lower for k in ["bank", "finance", "insurance", "nbfc"]):
         return "Banking"
-    if any(k in il for k in ["software", "it ", "information tech", "computer"]):
+    if any(k in industry_lower for k in ["software", "it ", "information tech", "computer"]):
         return "IT"
-    if any(k in il for k in ["pharma", "drug", "biotech", "hospital", "health"]):
+    if any(k in industry_lower for k in ["pharma", "drug", "biotech", "hospital", "health"]):
         return "Pharma"
-    if any(k in il for k in ["auto", "vehicle", "tyre"]):
+    if any(k in industry_lower for k in ["auto", "vehicle", "tyre"]):
         return "Auto"
-    if any(k in il for k in ["real estate", "realty", "housing", "property"]):
+    if any(k in industry_lower for k in ["real estate", "realty", "housing", "property"]):
         return "Realty"
-    if any(k in il for k in ["steel", "metal", "alumin", "copper", "zinc", "mining"]):
+    if any(k in industry_lower for k in ["steel", "metal", "alumin", "copper", "zinc", "mining"]):
         return "Metal"
-    if any(k in il for k in ["oil", "gas", "petro", "refin", "power", "energy", "electricity"]):
+    if any(k in industry_lower for k in ["oil", "gas", "petro", "refin", "power", "energy", "electricity"]):
         return "Energy"
-    if any(k in il for k in ["fmcg", "consumer", "food", "beverag", "tobacco", "personal care"]):
+    if any(k in industry_lower for k in ["fmcg", "consumer", "food", "beverag", "tobacco", "personal care"]):
         return "FMCG"
-    if any(k in il for k in ["capital goods", "infra", "construct", "engineer", "defence", "cement"]):
+    if any(k in industry_lower for k in ["capital goods", "infra", "construct", "engineer", "defence", "cement"]):
         return "Capital_Goods"
     return "Midcap"
 
 
 def momentum_screen(symbols: list[dict], top_n: int = 50) -> list[dict]:
-    """Score symbols by momentum (price vs MAs, volume surge). Returns top_n by score."""
+    """Score each symbol by momentum (price vs MAs, volume surge).
+    
+    Uses yfinance for data; assigns momentum_score 0-100.
+    Returns top_n by score with source='momentum'.
+    """
     try:
         import yfinance as yf
+        import pandas as pd
     except ImportError:
         logger.warning("yfinance not available for momentum screen")
         return [{**s, "source": "index", "momentum_score": 50} for s in symbols[:top_n]]
@@ -164,6 +167,7 @@ def momentum_screen(symbols: list[dict], top_n: int = 50) -> list[dict]:
     sym_map = {f"{s['symbol']}.NS": s for s in symbols}
     scored = []
 
+    # Batch download for efficiency
     try:
         data = yf.download(tickers, period="30d", interval="1d", progress=False, auto_adjust=True, group_by="ticker")
     except Exception as e:
@@ -173,7 +177,10 @@ def momentum_screen(symbols: list[dict], top_n: int = 50) -> list[dict]:
     for ticker in tickers:
         sym_info = sym_map.get(ticker, {})
         try:
-            df = data[ticker] if len(tickers) > 1 and ticker in data.columns.get_level_values(0) else (data if len(tickers) == 1 else None)
+            if len(tickers) == 1:
+                df = data
+            else:
+                df = data[ticker] if ticker in data.columns.get_level_values(0) else None
             if df is None or df.empty or len(df) < 5:
                 scored.append({**sym_info, "source": "index", "momentum_score": 40})
                 continue
@@ -190,8 +197,12 @@ def momentum_screen(symbols: list[dict], top_n: int = 50) -> list[dict]:
             vol_surge = vol_5d / vol_20d if vol_20d > 0 else 1.0
             price_vs_ma5 = (latest / ma5 - 1) * 100 if ma5 > 0 else 0
             price_vs_ma20 = (latest / ma20 - 1) * 100 if ma20 > 0 else 0
-            score = 50.0 + min(20, price_vs_ma5 * 4) + min(15, price_vs_ma20 * 2) + min(15, (vol_surge - 1) * 30)
-            scored.append({**sym_info, "source": "momentum", "momentum_score": round(max(0, min(100, score)), 1)})
+            score = 50.0
+            score += min(20, price_vs_ma5 * 4)   # +20 max if 5% above MA5
+            score += min(15, price_vs_ma20 * 2)  # +15 max if 7.5% above MA20
+            score += min(15, (vol_surge - 1) * 30)  # +15 max if 50% vol surge
+            score = max(0, min(100, score))
+            scored.append({**sym_info, "source": "momentum", "momentum_score": round(score, 1)})
         except Exception:
             scored.append({**sym_info, "source": "index", "momentum_score": 40})
 
@@ -200,10 +211,13 @@ def momentum_screen(symbols: list[dict], top_n: int = 50) -> list[dict]:
 
 
 def get_event_driven_symbols(corporate_events: list[dict]) -> list[dict]:
-    """Extract symbols with upcoming results/board meetings from corporate events."""
+    """Extract symbols with upcoming results/board meetings from corporate events.
+    
+    Returns list of {symbol, sector, source='event', event_type, event_date}.
+    """
+    result = []
     today = datetime.today().date()
     week_out = today + timedelta(days=7)
-    result = []
     for event in corporate_events:
         ex_date_str = event.get("exDate", "") or event.get("date", "")
         subject = (event.get("subject", "") or "").lower()
@@ -215,12 +229,7 @@ def get_event_driven_symbols(corporate_events: list[dict]) -> list[dict]:
         except Exception:
             continue
         if today <= ex_date <= week_out:
-            event_type = (
-                "results" if any(k in subject for k in ["result", "board"])
-                else "buyback" if "buyback" in subject
-                else "dividend" if "dividend" in subject
-                else "corporate_event"
-            )
+            event_type = "results" if "result" in subject or "board" in subject else "dividend" if "dividend" in subject or "buyback" in subject else "corporate_event"
             result.append({
                 "symbol": symbol,
                 "sector": "Unknown",
@@ -232,14 +241,19 @@ def get_event_driven_symbols(corporate_events: list[dict]) -> list[dict]:
 
 
 def get_preopen_movers(top_n: int = 20) -> list[dict]:
-    """Fetch NSE pre-open session movers. Only meaningful 9:00-9:08 IST."""
+    """Fetch NSE pre-open session data (9:00-9:08 IST only).
+    
+    Returns top_n symbols by price change in pre-open.
+    Only meaningful during 9:00-9:08 IST; returns empty list outside that window.
+    """
     now = datetime.utcnow()
-    ist_total_minutes = now.hour * 60 + now.minute + 330  # UTC+5:30
-    ist_hour = (ist_total_minutes // 60) % 24
-    ist_minute = ist_total_minutes % 60
+    # IST = UTC+5:30; pre-open window: 3:30-3:38 UTC
+    ist_hour = (now.hour + 5) % 24 + (1 if now.minute >= 30 else 0)
+    ist_minute = (now.minute + 30) % 60
     if not (ist_hour == 9 and ist_minute < 8):
-        logger.debug("Pre-open data only available 9:00-9:08 IST")
+        logger.debug("Pre-open data only available 9:00-9:08 IST, skipping")
         return []
+
     try:
         session = requests.Session()
         session.get(NSE_BASE, headers=HEADERS, timeout=15)
@@ -247,13 +261,19 @@ def get_preopen_movers(top_n: int = 20) -> list[dict]:
         resp = session.get(f"{NSE_BASE}/api/market-data-pre-open?key=NIFTY", headers=HEADERS, timeout=15)
         resp.raise_for_status()
         data = resp.json()
+        records = data.get("data", [])
         movers = []
-        for r in data.get("data", []):
+        for r in records:
             meta = r.get("metadata", {})
             symbol = meta.get("symbol", "")
             change_pct = meta.get("pChange", 0)
             if symbol and abs(change_pct) > 0.5:
-                movers.append({"symbol": symbol, "sector": "Unknown", "source": "preopen", "preopen_change_pct": change_pct})
+                movers.append({
+                    "symbol": symbol,
+                    "sector": "Unknown",
+                    "source": "preopen",
+                    "preopen_change_pct": change_pct,
+                })
         movers.sort(key=lambda x: abs(x.get("preopen_change_pct", 0)), reverse=True)
         return movers[:top_n]
     except Exception as e:

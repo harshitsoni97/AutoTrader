@@ -6,7 +6,6 @@ from autotrader.agents.layer0.universe_builder import universe_builder_agent
 from autotrader.agents.layer1.market_regime import market_regime_agent
 from autotrader.agents.layer1.sector_rotation import sector_rotation_agent
 from autotrader.agents.layer1.catalyst_intelligence import catalyst_intelligence_agent
-from autotrader.agents.layer1.options_intelligence import options_intelligence_agent
 from autotrader.agents.layer2.relative_strength import relative_strength_agent
 from autotrader.agents.layer2.volume_intelligence import volume_intelligence_agent
 from autotrader.agents.layer2.technical_structure import technical_structure_agent
@@ -42,7 +41,6 @@ def build_pre_market_graph():
     graph.add_node("market_regime", market_regime_agent)
     graph.add_node("sector_rotation", sector_rotation_agent)
     graph.add_node("catalyst_intelligence", catalyst_intelligence_agent)
-    graph.add_node("options_intelligence", options_intelligence_agent)
     graph.add_node("relative_strength", relative_strength_agent)
     graph.add_node("volume_intelligence", volume_intelligence_agent)
     graph.add_node("technical_structure", technical_structure_agent)
@@ -51,20 +49,15 @@ def build_pre_market_graph():
     graph.add_node("risk", risk_agent)
     graph.add_node("trade_construction", trade_construction_agent)
     graph.add_node("execution", execution_agent)
-
+    
     # Set entry point
     graph.set_entry_point("universe_builder")
+    
+    # Sequential edges through layer 1, 2, 3
     graph.add_edge("universe_builder", "market_regime")
-
-    # market_regime fans out to 3 parallel Layer 1 agents
     graph.add_edge("market_regime", "sector_rotation")
-    graph.add_edge("market_regime", "catalyst_intelligence")
-    graph.add_edge("market_regime", "options_intelligence")
-
-    # All 3 Layer 1 agents must complete before relative_strength
-    graph.add_edge("sector_rotation", "relative_strength")
+    graph.add_edge("sector_rotation", "catalyst_intelligence")
     graph.add_edge("catalyst_intelligence", "relative_strength")
-    graph.add_edge("options_intelligence", "relative_strength")
     graph.add_edge("relative_strength", "volume_intelligence")
     graph.add_edge("volume_intelligence", "technical_structure")
     graph.add_edge("technical_structure", "opportunity_scoring")
