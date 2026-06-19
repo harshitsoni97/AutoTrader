@@ -23,7 +23,7 @@ SECTOR_WATCHLIST = {
     "Metal": ["TATASTEEL", "JSWSTEEL", "HINDALCO"],
     "Energy": ["RELIANCE", "ONGC", "BPCL"],
     "FMCG": ["HINDUNILVR", "ITC", "NESTLEIND"],
-    "Midcap": ["POLYCAB", "DELHIVERY", "ZOMATO", "IRCTC"],
+    "Midcap": ["POLYCAB", "DELHIVERY", "ETERNAL", "IRCTC"],
 }
 
 
