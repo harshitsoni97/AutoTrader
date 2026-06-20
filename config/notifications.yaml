@@ -13,8 +13,8 @@
 # Env overrides: NOTIFICATIONS_ENABLED=true|false, NOTIFICATION_CHANNELS=telegram,email
 
 notifications:
-  enabled: false
-  channels: []            # e.g. [telegram] or [telegram, email]
+  enabled: true
+  channels: [telegram]    # credentials via TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID env vars
 
   notify_on_order: true           # entry order placed (dry-run and live)
   notify_on_exit: true            # stop / target exits

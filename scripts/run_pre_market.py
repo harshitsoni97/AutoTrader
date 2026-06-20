@@ -43,13 +43,19 @@ def main():
         logger.error("config_load_failed", error=str(e))
         sys.exit(1)
     
-    # Safety checks
+    # Safety checks — holiday/weekend is a warning only for pre-market analysis.
+    # Kill switch and API health are hard stops.
     safety = SafetyControls()
     ok, issues = safety.run_all_checks_basic()
     if not ok:
-        logger.error("safety_checks_failed", issues=issues)
-        print(f"Safety checks failed: {issues}")
-        return
+        holiday_only = all("holiday or weekend" in i for i in issues)
+        if holiday_only:
+            logger.warning("safety_checks_warning_weekend", issues=issues)
+            print(f"Warning (running anyway): {issues}")
+        else:
+            logger.error("safety_checks_failed", issues=issues)
+            print(f"Safety checks failed: {issues}")
+            return
     
     logger.info("safety_checks_passed")
     
