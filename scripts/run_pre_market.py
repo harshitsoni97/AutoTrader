@@ -90,13 +90,23 @@ def main():
 
     # Notify pre-market summary (regime + go/no-go) if configured.
     from autotrader.tools.notifications import get_notifier
-    get_notifier(config.notifications).notify_daily_summary({
+    notifier = get_notifier(config.notifications)
+    notifier.notify_daily_summary({
         "run_date": result.get("run_date", "unknown"),
         "dry_run": result.get("dry_run", config.trading_policy.dry_run),
         "trades": result.get("daily_trades_taken", 0),
         "daily_pnl": round(result.get("daily_pnl", 0.0), 2),
         "regime": result.get("market_regime", "n/a"),
     })
+
+    # Notify compete stack picks if compete mode is enabled.
+    competitor_results = result.get("competitor_results", [])
+    if competitor_results:
+        notifier.notify_compete_summary(
+            competitor_results,
+            run_date=result.get("run_date", "unknown"),
+            dry_run=result.get("dry_run", config.trading_policy.dry_run),
+        )
 
     print(f"\nPre-market analysis complete.")
     print(f"Market Regime: {result.get('market_regime')}")

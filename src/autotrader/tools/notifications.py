@@ -234,6 +234,32 @@ class Notifier:
         )
         return self.send(subject, body)
 
+    def notify_compete_summary(self, competitor_results: list, run_date: str = "", dry_run: bool = True) -> dict[str, bool]:
+        if not self.cfg.notify_on_daily_summary or not competitor_results:
+            return {}
+        mode = "DRY RUN" if dry_run else "LIVE"
+        subject = f"Compete Stacks [{mode}] — {run_date}"
+        lines = []
+        for r in competitor_results:
+            name = r.get("name", "?")
+            pick = r.get("pick") or "—"
+            score = r.get("adjusted_score")
+            score_str = f"{score:.1f}" if score is not None else "n/a"
+            regime = r.get("regime", "?")
+            passed = r.get("pass_review", True)
+            pnl = r.get("hypothetical_pnl_pct")
+            pnl_str = f"{pnl:+.2f}%" if pnl is not None else "pending"
+            veto = "" if passed else " [VETOED]"
+            rationale = r.get("rationale", "")[:120]
+            concerns = r.get("concerns", [])
+            concern_str = f"\n   ⚠ {'; '.join(concerns[:2])}" if concerns else ""
+            lines.append(
+                f"*{name}*{veto}: {pick} (score {score_str}, regime {regime}, P&L {pnl_str})\n"
+                f"   {rationale}{concern_str}"
+            )
+        body = "\n\n".join(lines)
+        return self.send(subject, body)
+
     def notify_error(self, context: str, error: str) -> dict[str, bool]:
         if not self.cfg.notify_on_error:
             return {}
