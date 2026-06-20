@@ -16,7 +16,7 @@
 
 notifications:
   enabled: true
-  channels: [telegram]    # credentials via TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID env vars
+  channels: [slack]       # credentials via SLACK_WEBHOOK_URL env var
 
   notify_on_order: true           # entry order placed (dry-run and live)
   notify_on_exit: true            # stop / target exits
