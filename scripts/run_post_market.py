@@ -9,13 +9,13 @@ _env_path = Path(__file__).parent.parent / ".env"
 if _env_path.exists():
     try:
         from dotenv import load_dotenv
-        load_dotenv(_env_path)
+        load_dotenv(_env_path, override=True)
     except ImportError:
         for line in _env_path.read_text().splitlines():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, _, v = line.partition("=")
-                os.environ.setdefault(k.strip(), v.strip())
+                os.environ[k.strip()] = v.strip()
 
 import structlog
 from autotrader.graphs.post_market import build_post_market_graph

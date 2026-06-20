@@ -9,13 +9,18 @@ _env = Path(__file__).parent.parent / ".env"
 if _env.exists():
     try:
         from dotenv import load_dotenv
-        load_dotenv(_env)  # absolute path — works regardless of cwd
+        load_dotenv(_env, override=True)
     except ImportError:
         for line in _env.read_text().splitlines():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, _, v = line.partition("=")
-                os.environ.setdefault(k.strip(), v.strip())
+                os.environ[k.strip()] = v.strip()  # force override
+
+# Confirm keys loaded
+for _k in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"]:
+    _v = os.getenv(_k, "")
+    print(f"[key-check] {_k}: len={len(_v)} starts={_v[:12]}")
 
 from autotrader.core.config import load_config
 from autotrader.core.llm import get_fast_llm, get_analysis_llm, get_report_llm, _make_llm
