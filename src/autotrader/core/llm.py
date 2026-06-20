@@ -135,20 +135,24 @@ def _make_anthropic(model: str, temperature: float, max_tokens: int, **kw: Any) 
 
 
 def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
-    """OpenAI GPT-5.x via Chat Completions (use_responses_api=False).
+    """OpenAI GPT-5.x via Chat Completions or Responses API.
 
-    reasoning_effort is silently dropped: the `reasoning` body param is only
-    accepted by the Responses API, not Chat Completions. GPT-5.x models apply
-    internal reasoning automatically without needing an explicit effort level.
-    o-series models (o1/o3/o4-mini) that require explicit effort go via openai_o.
+    reasoning_effort requires the Responses API (Chat Completions rejects it).
+    When effort is set we enable use_responses_api=True automatically.
+    o-series models (o1/o3/o4-mini) go via the openai_o provider instead.
     """
     from langchain_openai import ChatOpenAI
-    kw.pop("reasoning_effort", None)  # not supported by Chat Completions endpoint
+    effort = kw.pop("reasoning_effort", "")
+    use_responses = bool(effort)
+    extra_body: dict[str, Any] = {}
+    if effort:
+        extra_body["reasoning"] = {"effort": effort}
     return ChatOpenAI(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
-        use_responses_api=False,
+        use_responses_api=use_responses,
+        extra_body=extra_body or None,  # type: ignore[arg-type]
         **kw,
     )
 
