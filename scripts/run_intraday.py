@@ -123,6 +123,8 @@ def main():
             )
         except Exception as e:
             logger.error("intraday_iteration_failed", iteration=iteration, error=str(e))
+            from autotrader.tools.notifications import get_notifier
+            get_notifier(config.notifications).notify_error(f"intraday iteration {iteration}", str(e))
         
         time.sleep(POLL_INTERVAL_SECONDS)
     
