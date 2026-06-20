@@ -20,6 +20,12 @@ if _env_path.exists():
                 os.environ.setdefault(k.strip(), v.strip())
 
 import structlog
+
+# Debug: show which notification env vars are present (values hidden)
+_tg_token = os.getenv("TELEGRAM_BOT_TOKEN")
+_tg_chat  = os.getenv("TELEGRAM_CHAT_ID")
+print(f"[env-check] TELEGRAM_BOT_TOKEN={'SET' if _tg_token else 'MISSING'}, TELEGRAM_CHAT_ID={'SET' if _tg_chat else 'MISSING'}")
+
 from autotrader.graphs.pre_market import build_pre_market_graph
 from autotrader.core.config import load_config
 from autotrader.core.state import create_initial_state
