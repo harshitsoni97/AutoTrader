@@ -123,7 +123,12 @@ class ReportInsights(BaseModel):
 
 def _make_anthropic(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
     from langchain_anthropic import ChatAnthropic
-    return ChatAnthropic(model=model, temperature=temperature, max_tokens=max_tokens, **kw)
+    # thinking must go in model_kwargs, not as a top-level constructor param
+    thinking = kw.pop("thinking", None)
+    model_kwargs = kw.pop("model_kwargs", {})
+    if thinking:
+        model_kwargs["thinking"] = thinking
+    return ChatAnthropic(model=model, temperature=temperature, max_tokens=max_tokens, model_kwargs=model_kwargs, **kw)
 
 
 def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:

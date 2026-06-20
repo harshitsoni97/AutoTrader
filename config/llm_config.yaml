@@ -24,7 +24,7 @@ llm:
 
   # ── Fast tier — catalyst enrichment (low stakes, 5 calls/day) ───────────────
   fast_provider: "openai"
-  fast_model: "gpt-5.4 mini"
+  fast_model: "gpt-5.4-mini"
   fast_max_tokens: 512
   fast_temperature: 0.1
   # Anthropic alternative: fast_provider: "anthropic"  fast_model: "claude-haiku-4-5-20251001"
@@ -35,7 +35,7 @@ llm:
   analysis_model: "claude-sonnet-4-6"
   analysis_max_tokens: 1024
   analysis_temperature: 0.2
-  # OpenAI alternative: analysis_provider: "openai"  analysis_model: "gpt-5.4"
+  # OpenAI alternative: analysis_provider: "openai"  analysis_model: "gpt-5.4"  # or gpt-5.5 for highest quality
   # Google alternative: analysis_provider: "google"  analysis_model: "gemini-3.5-flash"  # stable
 
   # ── Report tier — trade veto gate + daily learning (CRITICAL, 1 call/day) ───
@@ -124,7 +124,7 @@ compete:
     # gpt-5.4-mini (fast) + gpt-5.4 (analysis, reasoning=low) + gpt-5.4 (report, reasoning=high)
     - name: "OpenAI"
       fast_provider: "openai"
-      fast_model: "gpt-5.4 mini"
+      fast_model: "gpt-5.4-mini"
       fast_temperature: 0.1
       fast_max_tokens: 512
       analysis_provider: "openai"
@@ -132,7 +132,7 @@ compete:
       analysis_temperature: 0.2
       analysis_max_tokens: 1024
       report_provider: "openai"
-      report_model: "gpt-5.4"
+      report_model: "gpt-5.5"
       report_max_tokens: 4096
       report_reasoning_effort: "high"
 
@@ -140,7 +140,7 @@ compete:
     # gemini-3.1-flash-lite (fast/cheap) + gemini-3.5-flash (analysis) + gemini-3.1-pro+thinking (report, equiv to opus)
     - name: "Google"
       fast_provider: "google"
-      fast_model: "gemini-3.1-flash-lite-preview"
+      fast_model: "gemini-3.1-flash-lite"
       fast_temperature: 0.1
       fast_max_tokens: 512
       analysis_provider: "google"
