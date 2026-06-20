@@ -78,7 +78,7 @@ llm:
   # All Google ($0.73/month):
   #   fast_provider: "google"     fast_model: "gemini-3.1-flash-lite-preview"
   #   analysis_provider: "google" analysis_model: "gemini-3.5-flash"
-  #   report_provider: "google"   report_model: "gemini-3.5-flash"  report_thinking_budget: 2000
+  #   report_provider: "google"   report_model: "gemini-3.1-pro-preview"  report_thinking_budget: 2000
 
   # ── Feature flags ────────────────────────────────────────────────────────────
   enable_catalyst_llm: true
@@ -137,7 +137,7 @@ compete:
       report_reasoning_effort: "high"
 
     # ── Google stack ─────────────────────────────────────────────────────────
-    # gemini-3.1-flash-lite (fast/cheap) + gemini-3.5-flash (analysis, stable) + gemini-3.5-flash+thinking (report)
+    # gemini-3.1-flash-lite (fast/cheap) + gemini-3.5-flash (analysis) + gemini-3.1-pro+thinking (report, equiv to opus)
     - name: "Google"
       fast_provider: "google"
       fast_model: "gemini-3.1-flash-lite-preview"
@@ -148,7 +148,7 @@ compete:
       analysis_temperature: 0.2
       analysis_max_tokens: 1024
       report_provider: "google"
-      report_model: "gemini-3.5-flash"
+      report_model: "gemini-3.1-pro-preview"
       report_max_tokens: 4096
       report_thinking_budget: 2000
 
