@@ -38,7 +38,7 @@ INDEX_CSV_MAP = {
 # Applied to every symbol before it is passed to yfinance or NSE API calls.
 SYMBOL_CORRECTIONS: dict[str, str] = {
     "ZOMATO": "ETERNAL",    # Zomato rebranded to Eternal Ltd on NSE
-    "M&M": "MM",            # yfinance drops & in ticker; NSE CSV uses M&M
+
     "TATAMOTORS": "TMCV",  # Tata Motors demerged: TMCV (commercial), TMPV (passenger)
 }
 
