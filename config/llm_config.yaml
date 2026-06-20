@@ -100,7 +100,7 @@ llm:
 # dry_run: false → primary stack drives real execution; all others tracked
 # primary: name of the stack that drives real orders (actual mode only)
 compete:
-  enabled: false    # set to true to activate
+  enabled: true
   dry_run: true
   primary: ""       # e.g. "Anthropic" — only matters when dry_run: false
   stacks:
