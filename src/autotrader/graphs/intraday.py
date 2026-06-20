@@ -1,7 +1,9 @@
 """Intraday monitoring graph - runs during market hours."""
 import structlog
 from langgraph.graph import StateGraph, END
+from autotrader.core.config import load_config
 from autotrader.core.state import TradingState
+from autotrader.agents.compete.hypothetical_monitor import compete_hypothetical_monitor_agent
 from autotrader.agents.layer1.market_regime import market_regime_agent
 from autotrader.agents.layer4.governance import governance_agent
 from autotrader.agents.layer5.monitoring import monitoring_agent
@@ -20,19 +22,22 @@ def should_monitor(state: TradingState) -> str:
 
 def build_intraday_graph():
     """Build and compile the intraday monitoring graph."""
+    cfg = load_config()
     graph = StateGraph(TradingState)
-    
-    # Add nodes
+
     graph.add_node("market_regime", market_regime_agent)
     graph.add_node("governance", governance_agent)
     graph.add_node("monitoring", monitoring_agent)
-    
-    # Set entry point
+
     graph.set_entry_point("market_regime")
-    
-    # market_regime -> governance -> monitoring -> END
     graph.add_edge("market_regime", "governance")
     graph.add_edge("governance", "monitoring")
-    graph.add_edge("monitoring", END)
-    
+
+    if cfg.compete.enabled:
+        graph.add_node("compete_hypothetical_monitor", compete_hypothetical_monitor_agent)
+        graph.add_edge("monitoring", "compete_hypothetical_monitor")
+        graph.add_edge("compete_hypothetical_monitor", END)
+    else:
+        graph.add_edge("monitoring", END)
+
     return graph.compile()

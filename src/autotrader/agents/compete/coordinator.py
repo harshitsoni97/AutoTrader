@@ -177,6 +177,7 @@ def compete_coordinator_agent(state: TradingState) -> dict[str, Any]:
 
         if not review:
             top = top3[0] if top3 else {}
+            ep = top.get("current_price", 0) or 0
             results.append({
                 "name": stack.name,
                 "fast_provider": stack.fast_provider,
@@ -190,7 +191,13 @@ def compete_coordinator_agent(state: TradingState) -> dict[str, Any]:
                 "rationale": "LLM scoring review failed — using deterministic top pick",
                 "concerns": [],
                 "pass_review": True,
-                "entry_price": top.get("current_price", 0),
+                "entry_price": ep,
+                "hypothetical_stop":    round(ep * 0.985, 2) if ep else None,
+                "hypothetical_target1": round(ep * 1.030, 2) if ep else None,
+                "hypothetical_target2": round(ep * 1.045, 2) if ep else None,
+                "stop_hit": False,
+                "target1_hit": False,
+                "target2_hit": False,
                 "error": "scoring_review_failed",
                 "hypothetical_pnl_pct": None,
                 "closing_price": None,
@@ -200,6 +207,12 @@ def compete_coordinator_agent(state: TradingState) -> dict[str, Any]:
         top_sym = review.get("top_symbol") or (top3[0]["symbol"] if top3 else None)
         pick_candidate = next((s for s in top3 if s["symbol"] == top_sym), top3[0] if top3 else {})
         adjusted_score = round((pick_candidate.get("score") or 0) + review.get("score_adjustment", 0.0), 2)
+
+        entry_price = pick_candidate.get("current_price", 0) or 0
+        # Hypothetical levels: 1.5% stop, 3% target1 (2R), 4.5% target2 (3R)
+        hyp_stop    = round(entry_price * 0.985, 2) if entry_price else None
+        hyp_target1 = round(entry_price * 1.030, 2) if entry_price else None
+        hyp_target2 = round(entry_price * 1.045, 2) if entry_price else None
 
         results.append({
             "name": stack.name,
@@ -214,7 +227,13 @@ def compete_coordinator_agent(state: TradingState) -> dict[str, Any]:
             "rationale": review.get("rationale", ""),
             "concerns": review.get("concerns", []),
             "pass_review": review.get("pass_review", True),
-            "entry_price": pick_candidate.get("current_price", 0),
+            "entry_price": entry_price,
+            "hypothetical_stop": hyp_stop,
+            "hypothetical_target1": hyp_target1,
+            "hypothetical_target2": hyp_target2,
+            "stop_hit": False,
+            "target1_hit": False,
+            "target2_hit": False,
             "error": None,
             "hypothetical_pnl_pct": None,
             "closing_price": None,
