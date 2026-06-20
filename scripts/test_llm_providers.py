@@ -18,7 +18,7 @@ if _env.exists():
                 os.environ.setdefault(k.strip(), v.strip())
 
 from autotrader.core.config import load_config
-from autotrader.core.llm import get_fast_llm, get_analysis_llm, get_report_llm, get_compete_llm
+from autotrader.core.llm import get_fast_llm, get_analysis_llm, get_report_llm, _make_llm
 
 cfg = load_config()
 
@@ -43,8 +43,15 @@ if cfg.compete.enabled:
     print("\n=== Compete Stacks ===")
     for stack in cfg.compete.stacks:
         print(f"\n  [{stack.name}]")
-        test_llm(f"  fast     ({stack.fast_provider}/{stack.fast_model})", get_compete_llm(stack, "fast"))
-        test_llm(f"  analysis ({stack.analysis_provider}/{stack.analysis_model})", get_compete_llm(stack, "analysis"))
-        test_llm(f"  report   ({stack.report_provider}/{stack.report_model})", get_compete_llm(stack, "report"))
+        for tier, provider, model, temp, tokens in [
+            ("fast",     stack.fast_provider,     stack.fast_model,     stack.fast_temperature,     stack.fast_max_tokens),
+            ("analysis", stack.analysis_provider, stack.analysis_model, stack.analysis_temperature, stack.analysis_max_tokens),
+            ("report",   stack.report_provider,   stack.report_model,   0.3,                        stack.report_max_tokens),
+        ]:
+            try:
+                llm = _make_llm(provider, model, temp, tokens)
+                test_llm(f"  {tier:<8} ({provider}/{model})", llm)
+            except Exception as e:
+                print(f"  {tier:<8} ({provider}/{model}): FAIL — {str(e)[:80]}")
 
 print()
