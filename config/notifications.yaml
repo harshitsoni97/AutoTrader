@@ -6,6 +6,8 @@
 #
 # Required env vars per channel:
 #   telegram : TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+#              Optional: TELEGRAM_API_BASE (proxy URL, default https://api.telegram.org)
+#              Optional: HTTPS_PROXY / ALL_PROXY (standard proxy env vars, respected by requests)
 #   email    : SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, EMAIL_TO
 #   whatsapp : TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, TWILIO_TO
 #   slack    : SLACK_WEBHOOK_URL
@@ -14,7 +16,7 @@
 
 notifications:
   enabled: true
-  channels: [telegram]    # credentials via TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID env vars
+  channels: [slack]       # credentials via SLACK_WEBHOOK_URL env var
 
   notify_on_order: true           # entry order placed (dry-run and live)
   notify_on_exit: true            # stop / target exits

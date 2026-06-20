@@ -57,9 +57,10 @@ def _send_telegram(subject: str, body: str, timeout: float) -> bool:
     if not token or not chat_id:
         logger.warning("telegram channel enabled but TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set")
         return False
+    api_base = os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
     text = f"*{subject}*\n{body}"
     return _post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
+        f"{api_base}/bot{token}/sendMessage",
         json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
         timeout=timeout,
     )
