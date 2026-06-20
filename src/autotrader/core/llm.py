@@ -135,30 +135,20 @@ def _make_anthropic(model: str, temperature: float, max_tokens: int, **kw: Any) 
 
 
 def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
-    """OpenAI GPT-5.x reasoning models via the Responses API.
+    """OpenAI GPT-5.x via Chat Completions (use_responses_api=False).
 
-    All GPT-5.x (gpt-5.4-mini, gpt-5.4, gpt-5.5, gpt-5.5-pro) are reasoning
-    models. Reasoning is controlled via reasoning={"effort": ...} in the request
-    body. Supported effort levels: none | minimal | low | medium | high | xhigh.
-    Empty string disables reasoning (no reasoning tokens).
-
-    use_responses_api=True routes ChatOpenAI through OpenAI's Responses API
-    instead of Chat Completions — recommended for reasoning models (interleaved
-    thinking, better intelligence, streaming support).
-
-    o-series models (o1/o3/o4-mini) use openai_o provider — they reject temperature.
+    reasoning_effort is silently dropped: the `reasoning` body param is only
+    accepted by the Responses API, not Chat Completions. GPT-5.x models apply
+    internal reasoning automatically without needing an explicit effort level.
+    o-series models (o1/o3/o4-mini) that require explicit effort go via openai_o.
     """
     from langchain_openai import ChatOpenAI
-    effort = kw.pop("reasoning_effort", "")
-    extra_body: dict[str, Any] = {}
-    if effort:
-        extra_body["reasoning"] = {"effort": effort}
+    kw.pop("reasoning_effort", None)  # not supported by Chat Completions endpoint
     return ChatOpenAI(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
         use_responses_api=False,
-        extra_body=extra_body or None,  # type: ignore[arg-type]
         **kw,
     )
 
@@ -185,7 +175,7 @@ def _make_google(model: str, temperature: float, max_tokens: int, **kw: Any) -> 
         model = f"models/{model}"
     init_kw: dict[str, Any] = dict(model=model, temperature=temperature, max_output_tokens=max_tokens, **kw)
     if thinking_budget is not None and thinking_budget > 0:
-        init_kw["thinking_config"] = {"thinking_budget": thinking_budget}
+        init_kw["thinking_budget"] = thinking_budget
     return ChatGoogleGenerativeAI(**init_kw)
 
 

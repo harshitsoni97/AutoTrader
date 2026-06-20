@@ -33,7 +33,11 @@ def test_llm(label, llm):
         return False
     try:
         r = llm.invoke("Reply with just the word OK.")
-        print(f"  {label}: PASS — {r.content[:40].strip()!r}")
+        # Some providers (Google, Responses API) return content as a list of parts
+        content = r.content
+        if isinstance(content, list):
+            content = next((p.get("text", "") if isinstance(p, dict) else str(p) for p in content if p), "")
+        print(f"  {label}: PASS — {content[:40].strip()!r}")
         return True
     except Exception as e:
         print(f"  {label}: FAIL — {str(e)[:80]}")
