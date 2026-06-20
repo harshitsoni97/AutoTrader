@@ -54,7 +54,17 @@ if cfg.compete.enabled:
             ("report",   stack.report_provider,   stack.report_model,   0.3,                        stack.report_max_tokens),
         ]:
             try:
-                llm = _make_llm(provider, model, temp, tokens)
+                extra: dict = {}
+                if tier == "report":
+                    budget = getattr(stack, "report_thinking_budget", 0)
+                    effort = getattr(stack, "report_reasoning_effort", "")
+                    if provider == "anthropic" and budget > 0:
+                        extra["thinking"] = {"type": "adaptive"}
+                    elif provider == "google" and budget > 0:
+                        extra["thinking_budget"] = budget
+                    elif provider in ("openai", "openai_o") and effort:
+                        extra["reasoning_effort"] = effort
+                llm = _make_llm(provider, model, temp, tokens, **extra)
                 test_llm(f"  {tier:<8} ({provider}/{model})", llm)
             except Exception as e:
                 print(f"  {tier:<8} ({provider}/{model}): FAIL — {str(e)[:80]}")
