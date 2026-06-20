@@ -51,6 +51,7 @@ class CatalystEnrichment(BaseModel):
         pattern="^(high|medium|low)$",
     )
     narrative: str = Field(
+        max_length=500,
         description="1-2 sentence plain-English explanation of why this catalyst matters today.",
     )
     confidence: float = Field(
@@ -73,6 +74,7 @@ class RegimeEnrichment(BaseModel):
         description="Up to 3 bullet-point factors driving the regime today.",
     )
     trading_implication: str = Field(
+        max_length=500,
         description="Single sentence: what this regime means for intraday momentum trades.",
     )
 
@@ -85,6 +87,7 @@ class ScoringReview(BaseModel):
         description="Points to add/subtract from the deterministic composite score. Range ±5 only.",
     )
     rationale: str = Field(
+        max_length=1000,
         description="Why this symbol is the best setup — mention regime, sector, and technicals.",
     )
     concerns: list[str] = Field(
@@ -98,6 +101,7 @@ class ScoringReview(BaseModel):
 class ReportInsights(BaseModel):
     """LLM-generated narrative sections for the daily learning report."""
     executive_summary: str = Field(
+        max_length=1000,
         description="3-4 sentence summary of today's session: regime, what happened, and key outcome.",
     )
     pattern_insights: list[str] = Field(
