@@ -123,8 +123,15 @@ class ReportInsights(BaseModel):
 
 def _make_anthropic(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
     from langchain_anthropic import ChatAnthropic
-    kw.pop("thinking", None)  # drop thinking — adaptive thinking on by default for opus
-    return ChatAnthropic(model=model, temperature=temperature, max_tokens=max_tokens, **kw)
+    thinking = kw.pop("thinking", None)
+    # thinking requires max_tokens >= 5000 and conflicts with temperature
+    effective_max_tokens = max(max_tokens, 5000) if thinking else max_tokens
+    init_kw: dict[str, Any] = dict(model=model, max_tokens=effective_max_tokens, **kw)
+    if thinking:
+        init_kw["thinking"] = thinking
+    else:
+        init_kw["temperature"] = temperature
+    return ChatAnthropic(**init_kw)
 
 
 def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
