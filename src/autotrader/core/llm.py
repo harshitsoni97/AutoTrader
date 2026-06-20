@@ -74,7 +74,7 @@ class RegimeEnrichment(BaseModel):
         description="Up to 3 bullet-point factors driving the regime today.",
     )
     trading_implication: str = Field(
-        max_length=200,
+        max_length=400,
         description="Single sentence: what this regime means for intraday momentum trades.",
     )
 
@@ -87,7 +87,7 @@ class ScoringReview(BaseModel):
         description="Points to add/subtract from the deterministic composite score. Range ±5 only.",
     )
     rationale: str = Field(
-        max_length=300,
+        max_length=600,
         description="Why this symbol is the best setup — mention regime, sector, and technicals.",
     )
     concerns: list[str] = Field(
