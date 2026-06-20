@@ -17,6 +17,7 @@ at end of day to produce the final leaderboard.
 from langgraph.graph import END, StateGraph
 
 from autotrader.agents.compete.coordinator import compete_coordinator_agent
+from autotrader.agents.layer0.universe_builder import universe_builder_agent
 from autotrader.agents.layer1.catalyst_intelligence import catalyst_intelligence_agent
 from autotrader.agents.layer1.market_regime import market_regime_agent
 from autotrader.agents.layer1.options_intelligence import options_intelligence_agent
@@ -54,6 +55,7 @@ def build_compete_graph():
     graph = StateGraph(TradingState)
 
     # Shared deterministic pipeline (identical to pre_market_graph)
+    graph.add_node("universe_builder", universe_builder_agent)
     graph.add_node("market_regime", market_regime_agent)
     graph.add_node("sector_rotation", sector_rotation_agent)
     graph.add_node("catalyst_intelligence", catalyst_intelligence_agent)
@@ -73,7 +75,8 @@ def build_compete_graph():
     graph.add_node("execution", execution_agent)
 
     # Deterministic pipeline edges (same fan-out/fan-in as pre_market)
-    graph.set_entry_point("market_regime")
+    graph.set_entry_point("universe_builder")
+    graph.add_edge("universe_builder", "market_regime")
     graph.add_edge("market_regime", "sector_rotation")
     graph.add_edge("market_regime", "catalyst_intelligence")
     graph.add_edge("market_regime", "options_intelligence")

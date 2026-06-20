@@ -57,6 +57,10 @@ class TradingState(TypedDict):
     # Dry-run mode flag (propagated from config)
     dry_run: bool
 
+    # Compete mode
+    competitor_results: list[dict]   # [{name, pick, score, regime, rationale, ...}]
+    raw_catalysts: list[dict]        # pre-enrichment catalysts passed to each stack
+
     # Post-market / learning
     trade_outcomes: list[dict]
     agent_scores: dict[str, float]
@@ -96,6 +100,8 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
         messages=[],
         audit_trail=[],
         errors=[],
+        competitor_results=[],
+        raw_catalysts=[],
         trade_outcomes=[],
         agent_scores={},
         learning_report_path="",
