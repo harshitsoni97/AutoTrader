@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 from datetime import date, timedelta, datetime, timezone
 from typing import Any
 
@@ -39,7 +40,7 @@ def _nse_get(path: str) -> dict | list | None:
     session = requests.Session()
     try:
         session.get(NSE_BASE, headers=HEADERS, timeout=10)
-        import time; time.sleep(0.3)
+        time.sleep(0.3)
         resp = session.get(f"{NSE_BASE}{path}", headers=HEADERS, timeout=10)
         resp.raise_for_status()
         if not resp.content:
