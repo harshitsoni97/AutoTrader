@@ -238,9 +238,19 @@ class Notifier:
         if not self.cfg.notify_on_daily_summary or not competitor_results:
             return {}
         mode = "DRY RUN" if dry_run else "LIVE"
-        subject = f"Compete Stacks [{mode}] — {run_date}"
+        eod = any(r.get("hypothetical_pnl_pct") is not None for r in competitor_results)
+
+        # At end-of-day, sort by P&L so winner is on top
+        results = sorted(
+            competitor_results,
+            key=lambda r: r.get("hypothetical_pnl_pct") if r.get("hypothetical_pnl_pct") is not None else float("-inf"),
+            reverse=True,
+        ) if eod else competitor_results
+
+        subject = f"{'🏆 Compete EOD Leaderboard' if eod else 'Compete Picks'} [{mode}] — {run_date}"
         lines = []
-        for r in competitor_results:
+        medals = ["🥇", "🥈", "🥉"]
+        for i, r in enumerate(results):
             name = r.get("name", "?")
             pick = r.get("pick") or "—"
             score = r.get("adjusted_score")
@@ -253,8 +263,9 @@ class Notifier:
             rationale = r.get("rationale", "")[:120]
             concerns = r.get("concerns", [])
             concern_str = f"\n   ⚠ {'; '.join(concerns[:2])}" if concerns else ""
+            prefix = medals[i] if eod and i < 3 else "•"
             lines.append(
-                f"*{name}*{veto}: {pick} (score {score_str}, regime {regime}, P&L {pnl_str})\n"
+                f"{prefix} *{name}*{veto}: {pick} (score {score_str}, regime {regime}, P&L {pnl_str})\n"
                 f"   {rationale}{concern_str}"
             )
         body = "\n\n".join(lines)
