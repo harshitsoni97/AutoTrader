@@ -123,12 +123,8 @@ class ReportInsights(BaseModel):
 
 def _make_anthropic(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
     from langchain_anthropic import ChatAnthropic
-    # thinking must go in model_kwargs, not as a top-level constructor param
-    thinking = kw.pop("thinking", None)
-    model_kwargs = kw.pop("model_kwargs", {})
-    if thinking:
-        model_kwargs["thinking"] = thinking
-    return ChatAnthropic(model=model, temperature=temperature, max_tokens=max_tokens, model_kwargs=model_kwargs, **kw)
+    kw.pop("thinking", None)  # drop thinking — adaptive thinking on by default for opus
+    return ChatAnthropic(model=model, temperature=temperature, max_tokens=max_tokens, **kw)
 
 
 def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
@@ -154,7 +150,7 @@ def _make_openai(model: str, temperature: float, max_tokens: int, **kw: Any) -> 
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
-        use_responses_api=True,
+        use_responses_api=False,
         extra_body=extra_body or None,  # type: ignore[arg-type]
         **kw,
     )
@@ -174,13 +170,14 @@ def _make_openai_o(model: str, temperature: float, max_tokens: int, **kw: Any) -
 
 
 def _make_google(model: str, temperature: float, max_tokens: int, **kw: Any) -> Any:
-    """Google Gemini. Gemini 2.5 models support thinking via thinking_budget param."""
+    """Google Gemini via langchain-google-genai."""
     from langchain_google_genai import ChatGoogleGenerativeAI
     thinking_budget = kw.pop("thinking_budget", None)
+    # langchain-google-genai requires model prefixed with "models/" for newer Gemini versions
+    if not model.startswith("models/"):
+        model = f"models/{model}"
     init_kw: dict[str, Any] = dict(model=model, temperature=temperature, max_output_tokens=max_tokens, **kw)
-    if thinking_budget is not None:
-        # Gemini 2.5: thinking_config controls how many tokens the model may think.
-        # Pass 0 to disable, positive int to enable.
+    if thinking_budget is not None and thinking_budget > 0:
         init_kw["thinking_config"] = {"thinking_budget": thinking_budget}
     return ChatGoogleGenerativeAI(**init_kw)
 
