@@ -17,6 +17,7 @@ if _env_path.exists():
                 k, _, v = line.partition("=")
                 os.environ[k.strip()] = v.strip()
 
+import argparse
 import time
 import structlog
 from datetime import datetime, timezone, timedelta
@@ -54,7 +55,18 @@ def is_market_open() -> bool:
 
 def main():
     """Run the intraday monitoring loop."""
-    logger.info("intraday_monitoring_starting")
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--bypass-market-hours", action="store_true",
+        help="Skip market-hours check (for dry-run testing outside trading hours).",
+    )
+    args = parser.parse_args()
+    bypass = args.bypass_market_hours
+
+    if bypass:
+        print("WARNING: --bypass-market-hours enabled. Market-hours check skipped.")
+
+    logger.info("intraday_monitoring_starting", bypass_market_hours=bypass)
     
     try:
         config = load_config()
@@ -82,7 +94,7 @@ def main():
     
     iteration = 0
     while True:
-        if not is_market_open():
+        if not bypass and not is_market_open():
             now_ist = datetime.now(timezone.utc) + IST_OFFSET
             logger.info("market_closed", time_ist=now_ist.strftime("%H:%M:%S"))
             print(f"Market closed at IST {now_ist.strftime('%H:%M:%S')}. Exiting intraday loop.")
