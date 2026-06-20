@@ -142,9 +142,7 @@ class Notifier:
         No-op (returns {}) when notifications are disabled. Never raises.
         """
         if not self.cfg.enabled or not self.cfg.channels:
-            logger.warning("notifications disabled or no channels configured (enabled=%s channels=%s)", self.cfg.enabled, self.cfg.channels)
             return {}
-        logger.info("sending notification channels=%s subject=%r", self.cfg.channels, subject)
         results: dict[str, bool] = {}
         for channel in self.cfg.channels:
             sender = _CHANNELS.get(channel)

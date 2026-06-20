@@ -39,7 +39,6 @@ def main():
     try:
         config = load_config()
         logger.info("config_loaded", strategy_version=config.strategy_version.strategy_version)
-        print(f"[notify-check] enabled={config.notifications.enabled} channels={config.notifications.channels}")
         setup_tracing(config)
     except Exception as e:
         logger.error("config_load_failed", error=str(e))
