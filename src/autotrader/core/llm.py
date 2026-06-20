@@ -312,7 +312,9 @@ def get_report_llm(cfg: Any) -> Any | None:
         else:
             extra["temperature"] = 0.3
 
-        return _make_llm(provider, cfg.report_model, 0.3, cfg.report_max_tokens, **extra)
+        # Pull temperature out of extra (if set) to pass as positional arg
+        temperature = extra.pop("temperature", 0.3)
+        return _make_llm(provider, cfg.report_model, temperature, cfg.report_max_tokens, **extra)
     except Exception as exc:
         logger.warning("Could not initialise report LLM (%s): %s", provider, exc)
         return None

@@ -67,9 +67,14 @@ def main():
     safety = SafetyControls()
     ok, issues = safety.run_all_checks_basic()
     if not ok:
-        logger.error("safety_checks_failed", issues=issues)
-        print(f"Safety checks failed: {issues}")
-        return
+        holiday_only = all("holiday or weekend" in i for i in issues)
+        if holiday_only:
+            logger.warning("safety_checks_warning_weekend", issues=issues)
+            print(f"Warning: {issues}")
+        else:
+            logger.error("safety_checks_failed", issues=issues)
+            print(f"Safety checks failed: {issues}")
+            return
     
     # Initialize state (would normally carry over from pre-market run)
     state = create_initial_state(session_type="intraday")

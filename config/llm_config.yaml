@@ -28,7 +28,7 @@ llm:
   fast_max_tokens: 512
   fast_temperature: 0.1
   # Anthropic alternative: fast_provider: "anthropic"  fast_model: "claude-haiku-4-5-20251001"
-  # Google alternative:    fast_provider: "google"     fast_model: "gemini-3.1-flash-lite"
+  # Google alternative:    fast_provider: "google"     fast_model: "gemini-3.1-flash-lite-preview"
 
   # ── Analysis tier — regime classification (HIGH stakes, 1 call/day) ──────────
   analysis_provider: "anthropic"
@@ -36,7 +36,7 @@ llm:
   analysis_max_tokens: 1024
   analysis_temperature: 0.2
   # OpenAI alternative: analysis_provider: "openai"  analysis_model: "gpt-5.4"
-  # Google alternative: analysis_provider: "google"  analysis_model: "gemini-3.5-flash"
+  # Google alternative: analysis_provider: "google"  analysis_model: "gemini-3.5-flash"  # stable
 
   # ── Report tier — trade veto gate + daily learning (CRITICAL, 1 call/day) ───
   # This is the last LLM gate before capital is committed. Use your strongest model.
@@ -76,9 +76,9 @@ llm:
   #   (gpt-5.5-pro available for highest intelligence, higher latency)
   #
   # All Google ($0.73/month):
-  #   fast_provider: "google"     fast_model: "gemini-3.1-flash-lite"
-  #   analysis_provider: "google" analysis_model: "gemini-3.1-flash-lite"
-  #   report_provider: "google"   report_model: "gemini-3.5-flash"  report_thinking_budget: 2000
+  #   fast_provider: "google"     fast_model: "gemini-3.1-flash-lite-preview"
+  #   analysis_provider: "google" analysis_model: "gemini-3.5-flash"
+  #   report_provider: "google"   report_model: "gemini-3.1-pro-preview"  report_thinking_budget: 2000
 
   # ── Feature flags ────────────────────────────────────────────────────────────
   enable_catalyst_llm: true
@@ -100,7 +100,7 @@ llm:
 # dry_run: false → primary stack drives real execution; all others tracked
 # primary: name of the stack that drives real orders (actual mode only)
 compete:
-  enabled: false    # set to true to activate
+  enabled: true
   dry_run: true
   primary: ""       # e.g. "Anthropic" — only matters when dry_run: false
   stacks:
@@ -137,18 +137,18 @@ compete:
       report_reasoning_effort: "high"
 
     # ── Google stack ─────────────────────────────────────────────────────────
-    # gemini-2.5-flash-lite (fast) + gemini-2.5-flash (analysis) + gemini-2.5-flash+thinking (report)
+    # gemini-3.1-flash-lite (fast/cheap) + gemini-3.5-flash (analysis) + gemini-3.1-pro+thinking (report, equiv to opus)
     - name: "Google"
       fast_provider: "google"
-      fast_model: "gemini-2.5-flash-lite"
+      fast_model: "gemini-3.1-flash-lite-preview"
       fast_temperature: 0.1
       fast_max_tokens: 512
       analysis_provider: "google"
-      analysis_model: "gemini-2.5-flash"
+      analysis_model: "gemini-3.5-flash"
       analysis_temperature: 0.2
       analysis_max_tokens: 1024
       report_provider: "google"
-      report_model: "gemini-2.5-flash"
+      report_model: "gemini-3.1-pro-preview"
       report_max_tokens: 4096
       report_thinking_budget: 2000
 
