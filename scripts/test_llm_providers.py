@@ -9,7 +9,7 @@ _env = Path(__file__).parent.parent / ".env"
 if _env.exists():
     try:
         from dotenv import load_dotenv
-        load_dotenv(_env)
+        load_dotenv(_env)  # absolute path — works regardless of cwd
     except ImportError:
         for line in _env.read_text().splitlines():
             line = line.strip()
