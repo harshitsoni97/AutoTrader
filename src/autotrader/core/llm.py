@@ -62,7 +62,10 @@ class CatalystEnrichment(BaseModel):
     @field_validator("narrative", mode="before")
     @classmethod
     def _truncate_narrative(cls, v: str) -> str:
-        return v[:500] if isinstance(v, str) else v
+        if isinstance(v, str) and len(v) > 500:
+            logger.warning("CatalystEnrichment.narrative exceeded limit: %d chars (limit 500)", len(v))
+            return v[:500]
+        return v
 
 
 class RegimeEnrichment(BaseModel):
@@ -86,7 +89,10 @@ class RegimeEnrichment(BaseModel):
     @field_validator("trading_implication", mode="before")
     @classmethod
     def _truncate_implication(cls, v: str) -> str:
-        return v[:500] if isinstance(v, str) else v
+        if isinstance(v, str) and len(v) > 500:
+            logger.warning("RegimeEnrichment.trading_implication exceeded limit: %d chars (limit 500)", len(v))
+            return v[:500]
+        return v
 
 
 class ScoringReview(BaseModel):
@@ -110,7 +116,10 @@ class ScoringReview(BaseModel):
     @field_validator("rationale", mode="before")
     @classmethod
     def _truncate_rationale(cls, v: str) -> str:
-        return v[:1000] if isinstance(v, str) else v
+        if isinstance(v, str) and len(v) > 1000:
+            logger.warning("ScoringReview.rationale exceeded limit: %d chars (limit 1000)", len(v))
+            return v[:1000]
+        return v
 
 
 class ReportInsights(BaseModel):
@@ -129,7 +138,10 @@ class ReportInsights(BaseModel):
     @field_validator("executive_summary", mode="before")
     @classmethod
     def _truncate_summary(cls, v: str) -> str:
-        return v[:1000] if isinstance(v, str) else v
+        if isinstance(v, str) and len(v) > 1000:
+            logger.warning("ReportInsights.executive_summary exceeded limit: %d chars (limit 1000)", len(v))
+            return v[:1000]
+        return v
 
 
 # ---------------------------------------------------------------------------
