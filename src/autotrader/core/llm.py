@@ -30,7 +30,7 @@ import logging
 import os
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,11 @@ class CatalystEnrichment(BaseModel):
         description="LLM confidence in this assessment (0-1).",
     )
 
+    @field_validator("narrative", mode="before")
+    @classmethod
+    def _truncate_narrative(cls, v: str) -> str:
+        return v[:500] if isinstance(v, str) else v
+
 
 class RegimeEnrichment(BaseModel):
     """LLM synthesis of current market regime context."""
@@ -77,6 +82,11 @@ class RegimeEnrichment(BaseModel):
         max_length=500,
         description="Single sentence: what this regime means for intraday momentum trades.",
     )
+
+    @field_validator("trading_implication", mode="before")
+    @classmethod
+    def _truncate_implication(cls, v: str) -> str:
+        return v[:500] if isinstance(v, str) else v
 
 
 class ScoringReview(BaseModel):
@@ -97,6 +107,11 @@ class ScoringReview(BaseModel):
         description="False if LLM believes the setup should NOT proceed despite clearing deterministic gates.",
     )
 
+    @field_validator("rationale", mode="before")
+    @classmethod
+    def _truncate_rationale(cls, v: str) -> str:
+        return v[:1000] if isinstance(v, str) else v
+
 
 class ReportInsights(BaseModel):
     """LLM-generated narrative sections for the daily learning report."""
@@ -110,6 +125,11 @@ class ReportInsights(BaseModel):
     recommendations: list[str] = Field(
         description="2-3 concrete, actionable items for tomorrow's session (no strategy-code changes).",
     )
+
+    @field_validator("executive_summary", mode="before")
+    @classmethod
+    def _truncate_summary(cls, v: str) -> str:
+        return v[:1000] if isinstance(v, str) else v
 
 
 # ---------------------------------------------------------------------------
