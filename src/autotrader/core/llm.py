@@ -288,10 +288,8 @@ def get_report_llm(cfg: Any) -> Any | None:
 
         if provider == "anthropic":
             if budget > 0:
-                extra["thinking"] = {"type": "enabled", "budget_tokens": budget}
-                extra["temperature"] = 1.0  # required when extended thinking is on
-            else:
-                extra["temperature"] = 0.3
+                extra["thinking"] = {"type": "adaptive"}
+            extra["temperature"] = 0.3
 
         elif provider == "openai":
             # GPT-5.x: supports reasoning_effort alongside temperature.
