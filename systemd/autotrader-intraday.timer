@@ -1,0 +1,11 @@
+[Unit]
+Description=AutoTrader Intraday Monitor Timer (09:10 IST = 03:40 UTC)
+Requires=autotrader-intraday.service
+
+[Timer]
+# IST is UTC+5:30, so 09:10 IST = 03:40 UTC
+OnCalendar=Mon..Fri 03:40:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

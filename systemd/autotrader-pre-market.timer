@@ -1,0 +1,11 @@
+[Unit]
+Description=AutoTrader Pre-Market Analysis Timer (08:00 IST = 02:30 UTC)
+Requires=autotrader-pre-market.service
+
+[Timer]
+# IST is UTC+5:30, so 08:00 IST = 02:30 UTC
+OnCalendar=Mon..Fri 02:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
