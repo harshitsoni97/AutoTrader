@@ -1,0 +1,17 @@
+[Unit]
+Description=AutoTrader Pre-Market Analysis
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/AutoTrader
+EnvironmentFile=/home/ubuntu/AutoTrader/.env
+ExecStart=/usr/bin/python /home/ubuntu/AutoTrader/scripts/run_pre_market.py
+StandardOutput=append:/home/ubuntu/AutoTrader/logs/pre_market.log
+StandardError=append:/home/ubuntu/AutoTrader/logs/pre_market.log
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

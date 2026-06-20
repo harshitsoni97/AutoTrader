@@ -1,0 +1,11 @@
+[Unit]
+Description=AutoTrader Post-Market Analysis Timer (15:35 IST = 10:05 UTC)
+Requires=autotrader-post-market.service
+
+[Timer]
+# IST is UTC+5:30, so 15:35 IST = 10:05 UTC
+OnCalendar=Mon..Fri 10:05:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

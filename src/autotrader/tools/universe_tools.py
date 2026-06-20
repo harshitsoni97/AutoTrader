@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -120,7 +121,6 @@ def fetch_index_constituents(index: str = "nifty500", max_count: int = 100) -> l
     """
     path = INDEX_CSV_MAP.get(index.lower(), INDEX_CSV_MAP["nifty500"])
     try:
-        import time
         resp = requests.get(
             f"{NIFTY_INDICES_BASE}{path}",
             headers={**HEADERS, "Accept": "text/csv,*/*"},
@@ -279,7 +279,7 @@ def get_preopen_movers(top_n: int = 20) -> list[dict]:
     try:
         session = requests.Session()
         session.get(NSE_BASE, headers=HEADERS, timeout=15)
-        import time; time.sleep(0.3)
+        time.sleep(0.3)
         resp = session.get(f"{NSE_BASE}/api/market-data-pre-open?key=NIFTY", headers=HEADERS, timeout=15)
         resp.raise_for_status()
         data = resp.json()
