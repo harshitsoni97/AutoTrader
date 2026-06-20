@@ -73,7 +73,7 @@ _FALLBACK_SYMBOLS = [
     {"symbol": "MARUTI", "sector": "Auto"},
     {"symbol": "TMCV", "sector": "Auto"},   # Tata Motors Commercial Vehicles
     {"symbol": "TMPV", "sector": "Auto"},   # Tata Motors Passenger Vehicles
-    {"symbol": "MM", "sector": "Auto"},
+    {"symbol": "M&M", "sector": "Auto"},
     {"symbol": "BAJAJ-AUTO", "sector": "Auto"},
     {"symbol": "HEROMOTOCO", "sector": "Auto"},
     {"symbol": "DLF", "sector": "Realty"},

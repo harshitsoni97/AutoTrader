@@ -22,6 +22,7 @@ if _env_path.exists():
 import structlog
 
 from autotrader.graphs.pre_market import build_pre_market_graph
+from autotrader.graphs.compete import build_compete_graph
 from autotrader.core.config import load_config
 from autotrader.core.state import create_initial_state
 from autotrader.core.tracing import setup_tracing
@@ -63,8 +64,12 @@ def main():
     # Initialize state
     state = create_initial_state(session_type="pre_market")
     
-    # Build and run graph
-    graph = build_pre_market_graph()
+    # Build and run graph — use compete graph when compete mode is enabled
+    if config.compete.enabled:
+        logger.info("compete_mode_enabled", stacks=[s.name for s in config.compete.stacks])
+        graph = build_compete_graph()
+    else:
+        graph = build_pre_market_graph()
     
     logger.info("starting_pre_market_analysis")
     try:
