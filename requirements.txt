@@ -22,9 +22,9 @@ pytest>=7.4.0
 # Anthropic (default)
 langchain-anthropic>=0.1.0
 # OpenAI / Azure OpenAI
-# langchain-openai>=0.1.0
+langchain-openai>=0.1.0
 # Google Gemini
-# langchain-google-genai>=1.0.0
+langchain-google-genai>=1.0.0
 # Mistral
 # langchain-mistralai>=0.1.0
 # Groq
