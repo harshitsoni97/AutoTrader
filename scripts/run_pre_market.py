@@ -74,11 +74,12 @@ def main():
     logger.info("starting_pre_market_analysis")
     try:
         result = graph.invoke(state)
+        compete_dry_run = config.compete.enabled and config.compete.dry_run
         logger.info(
             "pre_market_complete",
             regime=result.get("market_regime"),
-            governance=result.get("governance_approved"),
-            risk=result.get("risk_passed"),
+            governance="compete_dry_run" if compete_dry_run else result.get("governance_approved"),
+            risk="compete_dry_run" if compete_dry_run else result.get("risk_passed"),
             trades=result.get("daily_trades_taken", 0),
         )
     except Exception as e:
@@ -116,8 +117,11 @@ def main():
 
     print(f"\nPre-market analysis complete.")
     print(f"Market Regime: {result.get('market_regime')}")
-    print(f"Governance Approved: {result.get('governance_approved')}")
-    print(f"Risk Passed: {result.get('risk_passed')}")
+    if config.compete.enabled and config.compete.dry_run:
+        print("Mode: Compete DRY RUN (governance/risk skipped — no live execution)")
+    else:
+        print(f"Governance Approved: {result.get('governance_approved')}")
+        print(f"Risk Passed: {result.get('risk_passed')}")
     print(f"Report saved to: {path}")
     
     return result
