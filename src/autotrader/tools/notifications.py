@@ -253,7 +253,7 @@ class Notifier:
         # Trade plan block (ATR-based levels from trade_construction_agent)
         if trade_plan and trade_plan.get("symbol"):
             tp = trade_plan
-            rr = tp.get("risk_reward", 0)
+            rr = tp.get("rr", tp.get("risk_reward", 0))
             lines.append(
                 f"📊 *Trade Plan — {tp['symbol']}*\n"
                 f"   Entry: ₹{tp.get('entry', 0):.2f}  |  Stop: ₹{tp.get('stop', 0):.2f}  |  "
@@ -261,8 +261,6 @@ class Notifier:
                 f"   Qty: {tp.get('qty', 0)}  |  Risk:Reward: {rr:.1f}R  |  "
                 f"Capital: ₹{tp.get('position_size_inr', 0):,.0f}"
             )
-            lines.append("")
-
         medals = ["🥇", "🥈", "🥉"]
         for i, r in enumerate(results):
             name = r.get("name", "?")
