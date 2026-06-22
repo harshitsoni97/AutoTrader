@@ -25,11 +25,17 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
         entry = audit_entry(agent=AGENT_NAME, action="no_opportunity", data={})
         return {"trade_plan": {}, "audit_trail": [entry]}
 
+    import math
+
     top = scored[0]
     symbol = top["symbol"]
     current_price = top.get("current_price", 0) or 0
+    if not current_price or math.isnan(current_price) or current_price <= 0:
+        entry = audit_entry(agent=AGENT_NAME, action="no_valid_price", data={"symbol": symbol})
+        logger.warning("[%s] Skipping %s — current_price is 0 or NaN", AGENT_NAME, symbol)
+        return {"trade_plan": {}, "audit_trail": [entry]}
+
     raw_atr = top.get("atr", None)
-    import math
     atr = raw_atr if (raw_atr and not math.isnan(raw_atr) and raw_atr > 0) else current_price * 0.015
     pattern = top.get("pattern", "NONE")
     vwap = top.get("vwap", current_price) or current_price
