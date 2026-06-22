@@ -115,6 +115,8 @@ def get_vix() -> dict[str, float] | None:
         return None
 
     raw = data.get("data", {}) if isinstance(data, dict) else {}
+    # Response keys use colon separator; normalise to pipe for lookup
+    raw = {k.replace(":", "|"): v for k, v in raw.items()}
     entry = raw.get(vix_key, {})
     if not entry:
         logger.warning("Upstox VIX: no data for %s", vix_key)
