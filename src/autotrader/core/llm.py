@@ -404,5 +404,15 @@ def make_competitor_llm(competitor: Any) -> Any | None:
 
 
 def structured(llm: Any, schema: type[BaseModel]) -> Any:
-    """Bind a Pydantic schema to an LLM via with_structured_output."""
+    """Bind a Pydantic schema to an LLM via with_structured_output.
+
+    Anthropic structured output via tool-forcing is unreliable when thinking is
+    enabled. In that case we swap to json_mode which works correctly with thinking.
+    """
+    try:
+        from langchain_anthropic import ChatAnthropic
+        if isinstance(llm, ChatAnthropic) and getattr(llm, "thinking", None):
+            return llm.with_structured_output(schema, method="json_mode")
+    except ImportError:
+        pass
     return llm.with_structured_output(schema)
