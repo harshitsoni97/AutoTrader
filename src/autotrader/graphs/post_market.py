@@ -1,6 +1,7 @@
 """Post-market learning graph - runs after market close."""
 import structlog
 from langgraph.graph import StateGraph, END
+from autotrader.core.config import load_config
 from autotrader.core.state import TradingState
 from autotrader.agents.compete.evaluator import compete_evaluator_agent
 from autotrader.agents.layer6.daily_learning import daily_learning_agent
