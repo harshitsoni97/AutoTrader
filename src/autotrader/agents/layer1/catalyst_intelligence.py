@@ -33,6 +33,7 @@ CATALYST_SCORES = {
 _FALLBACK_SECTOR_WATCHLIST = {
     "Banking": ["HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN", "KOTAKBANK"],
     "Capital_Goods": ["LT", "BEL", "HAL", "BHEL", "ABB"],
+
     "IT": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM"],
     "Pharma": ["SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB", "AUROPHARMA"],
     "Auto": ["MARUTI", "TMCV", "TMPV", "MM", "BAJAJ-AUTO", "HEROMOTOCO"],

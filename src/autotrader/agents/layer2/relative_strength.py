@@ -15,7 +15,7 @@ AGENT_NAME = "RelativeStrengthAgent"
 
 SECTOR_WATCHLIST = {
     "Banking": ["HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN"],
-    "Capital_Goods": ["L&T", "BEL", "HAL", "BHEL"],
+    "Capital_Goods": ["LT", "BEL", "HAL", "BHEL"],
     "IT": ["TCS", "INFY", "WIPRO", "HCLTECH"],
     "Pharma": ["SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB"],
     "Auto": ["MARUTI", "TMCV", "TMPV", "MM", "BAJAJ-AUTO"],
