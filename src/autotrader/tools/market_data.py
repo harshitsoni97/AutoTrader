@@ -123,12 +123,33 @@ def get_global_markets() -> dict[str, Any]:
 
 
 def get_stock_data(symbol: str, period: str = "25d") -> list[dict]:
-    """Fetch NSE stock data. Symbol should be like 'BEL.NS'."""
+    """Fetch NSE stock OHLCV. Tries yfinance first, then Upstox historical candles."""
     ns_symbol = symbol if symbol.endswith(".NS") else f"{symbol}.NS"
     data = _yf_download(ns_symbol, period=period)
     if data:
         return data
-    # Fallback with plausible price range
+
+    # Upstox fallback using instrument map
+    try:
+        from autotrader.tools import upstox_data
+        import json, os
+        from datetime import date, timedelta
+        map_path = os.path.join(os.path.dirname(__file__), "../../../config/upstox_instruments.json")
+        map_path = os.path.normpath(map_path)
+        with open(map_path) as f:
+            instrument_map: dict = json.load(f)
+        ikey = instrument_map.get(symbol)
+        if ikey:
+            days = int(period.replace("d", ""))
+            from_date = (date.today() - timedelta(days=days + 10)).strftime("%Y-%m-%d")
+            to_date = date.today().strftime("%Y-%m-%d")
+            rows = upstox_data.get_historical_candles(ikey, "days", 1, from_date, to_date)
+            if rows:
+                logger.info("get_stock_data: using Upstox for %s", symbol)
+                return rows
+    except Exception as exc:
+        logger.debug("Upstox stock fallback failed for %s: %s", symbol, exc)
+
     base = {"BEL": 412, "RELIANCE": 2800, "INFY": 1750, "TCS": 4100}.get(symbol, 200)
     return _mock_ohlcv(symbol, base)
 

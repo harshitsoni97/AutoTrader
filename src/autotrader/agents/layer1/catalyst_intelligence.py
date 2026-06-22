@@ -35,12 +35,12 @@ _FALLBACK_SECTOR_WATCHLIST = {
     "Capital_Goods": ["LT", "BEL", "HAL", "BHEL", "ABB"],
     "IT": ["TCS", "INFY", "WIPRO", "HCLTECH", "TECHM"],
     "Pharma": ["SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB", "AUROPHARMA"],
-    "Auto": ["MARUTI", "TMCV", "TMPV", "MM", "BAJAJ-AUTO", "HEROMOTOCO"],
+    "Auto": ["MARUTI", "TATAMOTORS", "BAJAJAUT", "HEROMOTOCO", "M&M"],
     "Realty": ["DLF", "GODREJPROP", "OBEROIRLTY", "PRESTIGE", "PHOENIXLTD"],
     "Metal": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "SAIL"],
     "Energy": ["RELIANCE", "ONGC", "BPCL", "IOC", "POWERGRID"],
     "FMCG": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "DABUR"],
-    "Midcap": ["POLYCAB", "DELHIVERY", "ETERNAL", "NAUKRI", "IRCTC"],
+    "Midcap": ["POLYCAB", "DELHIVERY", "ZOMATO", "NAUKRI", "IRCTC"],
 }
 
 
