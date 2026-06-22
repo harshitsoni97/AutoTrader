@@ -8,6 +8,7 @@ from typing import Any
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 from autotrader.tools.nse_tools import get_options_chain
+from autotrader.tools import upstox_data
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +55,10 @@ def _interpret_options(pcr: float, iv_skew: float, max_pain: float, spot: float)
 
 
 def options_intelligence_agent(state: TradingState) -> dict[str, Any]:
-    logger.info("[%s] Fetching NSE options chain", AGENT_NAME)
+    logger.info("[%s] Fetching options chain", AGENT_NAME)
 
-    chain = get_options_chain("NIFTY")
+    # Upstox is primary; NSE scraper is fallback
+    chain = upstox_data.get_options_chain("Nifty 50") or get_options_chain("NIFTY")
     pcr = chain["pcr"]
     max_pain = chain["max_pain"]
     atm_iv = chain["atm_iv"]

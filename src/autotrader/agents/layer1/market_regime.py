@@ -18,6 +18,7 @@ from autotrader.tools.market_data import (
     get_vix_data,
 )
 from autotrader.tools.nse_tools import get_fii_dii_data, get_fii_derivatives
+from autotrader.tools import upstox_data
 
 logger = logging.getLogger(__name__)
 
@@ -159,12 +160,27 @@ def _compute_gift_gap(gift_data: dict, nifty_rows: list[dict]) -> float:
 def market_regime_agent(state: TradingState) -> dict[str, Any]:
     logger.info("[%s] Running market regime analysis", AGENT_NAME)
 
-    nifty = get_nifty_data()
+    # Upstox is primary; yfinance/NSE-scraper are fallbacks
+    upstox_nifty = upstox_data.get_nifty_data()
+    nifty = upstox_nifty if upstox_nifty else get_nifty_data()
+
     banknifty = get_banknifty_data()
-    vix_data = get_vix_data()
-    fii_dii = get_fii_dii_data()
+
+    upstox_vix = upstox_data.get_vix()
+    if upstox_vix:
+        vix_data = upstox_vix
+    else:
+        vix_data = get_vix_data()
+
+    upstox_fii = upstox_data.get_fii_data()
+    if upstox_fii:
+        fii_dii = {"fii_net": upstox_fii.get("fii_net", 0.0)}
+        fii_deriv = {"fii_index_future_net": upstox_fii.get("fii_future_net", 0.0)}
+    else:
+        fii_dii = get_fii_dii_data()
+        fii_deriv = get_fii_derivatives()
+
     global_mkts = get_global_markets()
-    fii_deriv = get_fii_derivatives()
     gift_data = get_gift_nifty()
 
     nifty_pct = _pct_change(nifty, 5)

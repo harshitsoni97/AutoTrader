@@ -91,7 +91,10 @@ def get_ltp(instrument_keys: list[str]) -> dict[str, float] | None:
     result: dict[str, float] = {}
     for key, val in raw.items():
         if isinstance(val, dict) and "last_price" in val:
-            result[key] = float(val["last_price"])
+            # Upstox returns keys with colon separator in response (NSE_EQ:SYMBOL)
+            # but callers pass pipe separator (NSE_EQ|SYMBOL) — normalise both
+            normalised = key.replace(":", "|")
+            result[normalised] = float(val["last_price"])
     return result if result else None
 
 
@@ -336,11 +339,7 @@ def get_options_chain(symbol: str = "Nifty 50") -> dict[str, Any] | None:
     ltp_data = get_ltp([instrument_key])
     spot = float(ltp_data.get(instrument_key, 0)) if ltp_data else 0.0
     if spot == 0.0:
-        # Fallback: find strike where call_ltp ≈ put_ltp (rough ATM)
-        min_diff = float("inf")
-        for r in strike_records:
-            diff = abs(r["ce_ltp"] - float(r["strike"]) * 0)  # can't determine spot this way
-            _ = diff  # not helpful; leave spot as 0
+        logger.warning("Upstox options chain: could not fetch spot price for %s", symbol)
 
     # Overall PCR
     pcr = round(total_put_oi / total_call_oi, 3) if total_call_oi > 0 else 1.0

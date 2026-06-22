@@ -111,7 +111,7 @@ class SafetyControls:
         """
         if check_date is None:
             check_date = str(date.today())
-        
+
         # Check weekend
         try:
             d = date.fromisoformat(check_date)
@@ -120,12 +120,19 @@ class SafetyControls:
                 return False
         except ValueError:
             return True
-        
-        # Check NSE holiday
-        if check_date in NSE_HOLIDAYS:
+
+        # Fetch live holiday list from Upstox; fall back to hardcoded set
+        try:
+            from autotrader.tools import upstox_data
+            live_holidays = upstox_data.get_market_holidays()
+            holiday_set = set(live_holidays) if live_holidays else NSE_HOLIDAYS
+        except Exception:
+            holiday_set = NSE_HOLIDAYS
+
+        if check_date in holiday_set:
             logger.info("market_closed_holiday", date=check_date)
             return False
-        
+
         return True
     
     def check_broker_connectivity(self, broker) -> bool:

@@ -40,16 +40,29 @@ POLL_INTERVAL_SECONDS = 300  # 5 minutes
 
 
 def is_market_open() -> bool:
-    """Check if NSE market is currently open (IST)."""
+    """Check if NSE market is currently open.
+
+    Asks Upstox exchange status first (authoritative); falls back to
+    time-based check so the loop keeps working if Upstox is unreachable.
+    """
+    try:
+        from autotrader.tools import upstox_data
+        status = upstox_data.get_market_status()
+        if status is not None:
+            return status
+    except Exception:
+        pass
+
+    # Time-based fallback (IST 09:15 – 15:30)
     now_utc = datetime.now(timezone.utc)
     now_ist = now_utc + IST_OFFSET
-    
+
     if now_ist.weekday() >= 5:  # Weekend
         return False
-    
+
     market_open = now_ist.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MINUTE, second=0, microsecond=0)
     market_close = now_ist.replace(hour=MARKET_CLOSE_HOUR, minute=MARKET_CLOSE_MINUTE, second=0, microsecond=0)
-    
+
     return market_open <= now_ist <= market_close
 
 

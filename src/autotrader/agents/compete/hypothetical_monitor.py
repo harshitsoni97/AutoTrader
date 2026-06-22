@@ -20,6 +20,17 @@ AGENT_NAME = "CompeteHypotheticalMonitor"
 
 
 def _fetch_price(symbol: str) -> float | None:
+    # Upstox LTP is primary (reliable intraday)
+    try:
+        from autotrader.tools import upstox_data
+        instrument_key = f"NSE_EQ|{symbol}"
+        prices = upstox_data.get_ltp([instrument_key])
+        if prices and instrument_key in prices:
+            return prices[instrument_key]
+    except Exception as exc:
+        logger.debug("[%s] Upstox LTP failed for %s: %s", AGENT_NAME, symbol, exc)
+
+    # Fallback to yfinance
     try:
         import yfinance as yf
         t = yf.Ticker(f"{symbol}.NS")
