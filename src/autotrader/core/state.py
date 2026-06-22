@@ -20,6 +20,17 @@ class TradingState(TypedDict):
     # Layer 1 outputs
     market_regime: str          # bullish | bearish | range_bound | high_volatility | risk_on | risk_off
     market_confidence: float    # 0-1
+    india_vix: float
+    nifty_change_pct: float
+    global_change_pct: float
+    fii_net_cash: float
+    fii_future_net: float
+    gift_nifty_gap_pct: float
+    options_pcr: float
+    options_max_pain: float
+    options_atm_iv: float
+    options_iv_skew: float
+    options_signal: str         # bullish | bearish | neutral
     top_sectors: list[str]
     sector_rankings: list[dict]
     catalysts: list[dict]       # [{symbol, catalyst_score, reason}]
@@ -80,6 +91,17 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
         config_version=sv.config_version,
         market_regime="unknown",
         market_confidence=0.0,
+        india_vix=0.0,
+        nifty_change_pct=0.0,
+        global_change_pct=0.0,
+        fii_net_cash=0.0,
+        fii_future_net=0.0,
+        gift_nifty_gap_pct=0.0,
+        options_pcr=0.0,
+        options_max_pain=0.0,
+        options_atm_iv=0.0,
+        options_iv_skew=0.0,
+        options_signal="neutral",
         top_sectors=[],
         sector_rankings=[],
         universe=[],
