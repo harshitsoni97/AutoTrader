@@ -223,13 +223,13 @@ pip install -r requirements.txt
 |---|---|
 | `langgraph` | Agent graph orchestration |
 | `langchain-anthropic` | Claude LLM integration |
-| `yfinance` | Market data (Nifty, stocks) |
+| `yfinance` | Market data fallback (Nifty, stocks) |
 | `pydantic` | Config and message validation |
 | `structlog` | Structured JSON logging |
 | `apscheduler` | Cron-style session scheduling |
 | `qdrant-client` | Vector store for semantic memory search |
 | `psycopg2-binary` | Postgres for long-term pattern storage |
-| `requests` | NSE API scraping |
+| `requests` | Upstox REST API + NSE scraping |
 
 ---
 
@@ -378,9 +378,14 @@ DATABASE_URL=postgresql://user:password@localhost:5432/autotrader
 QDRANT_URL=http://localhost:6333
 QDRANT_API_KEY=your_qdrant_key
 
-# --- Market Data ---
-# yfinance is free; NSE data is scraped from the public NSE website
-# No key needed for either by default
+# --- Market Data (Upstox Analytics Token — primary source) ---
+# Long-lived token (1-year validity); read-only; covers VIX, FII, options chain,
+# LTP quotes, OHLCV candles, market holidays, and exchange status.
+# Generate at: https://developer.upstox.com → Analytics API → Analytics Token
+UPSTOX_ANALYTICS_TOKEN=your_upstox_analytics_token
+
+# yfinance and NSE scraper are used automatically as fallback when the above
+# token is absent or the Upstox call fails — no key required for fallbacks.
 
 # --- Notifications (optional; see Notifications section) ---
 # Enable in config/notifications.yaml (or NOTIFICATIONS_ENABLED=true) and pick channels.
@@ -410,8 +415,9 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 | Anthropic API | LLM enrichment + narrative in reports | No |
 | LangSmith / MLflow | LLM call tracing & prompt versioning | No (tracing off by default) |
 | Zerodha Kite / Upstox | Live order placement (see Broker Connectors) | No (MockBroker used) |
-| yfinance | Nifty, VIX, stock OHLCV data | Yes (falls back to mock data) |
-| NSE website | FII/DII, bulk deals, corporate actions, ASM/GSM | Yes (falls back to mock data) |
+| Upstox Analytics Token | VIX, FII/derivatives, options chain, LTP, OHLCV, holidays, market status | Yes (falls back to yfinance/NSE) |
+| yfinance | Nifty, VIX, stock OHLCV data (fallback when Upstox unavailable) | Yes (falls back to mock data) |
+| NSE website | FII/DII, bulk deals, corporate actions, ASM/GSM (fallback) | Yes (falls back to mock data) |
 | PostgreSQL | Production long-term memory persistence | No (in-memory store used) |
 | Qdrant | Semantic search over short-term memory | No (in-memory store used) |
 
@@ -679,7 +685,7 @@ system logs a warning and falls back to in-memory — it never fails to start.
 Set `TRADING_ENABLED=false` to halt all trading immediately. The safety check runs before every session.
 
 ### Holiday Calendar
-`SafetyControls` maintains an embedded NSE holiday list (2024–2025). The system will not run pre-market or intraday sessions on market holidays.
+`SafetyControls` fetches the live NSE holiday calendar from the Upstox API (`UPSTOX_ANALYTICS_TOKEN`) on every check. If the token is absent or the request fails, it falls back to a hardcoded 2024–2025 holiday list. The system will not run pre-market or intraday sessions on market holidays.
 
 ### Governance Gate
 The `GovernanceAgent` runs nine checks in sequence. The first failure immediately routes the LangGraph flow to `END` — no further agents execute, no trade is taken. All governance decisions are logged to the audit trail.
@@ -850,8 +856,9 @@ autotrader/
 │   │   └── scoring.py            # recency × relevance × importance scoring
 │   │
 │   ├── tools/
-│   │   ├── market_data.py        # yfinance wrappers + mock fallbacks
-│   │   ├── nse_tools.py          # NSE scraping (FII/DII, bulk deals, ASM/GSM)
+│   │   ├── upstox_data.py        # Upstox Analytics Token client (primary market data)
+│   │   ├── market_data.py        # yfinance wrappers + mock fallbacks (secondary)
+│   │   ├── nse_tools.py          # NSE scraping (FII/DII, bulk deals, ASM/GSM; fallback)
 │   │   └── broker_tools.py       # BrokerInterface + Mock/Zerodha/Upstox + get_broker()
 │   │
 │   ├── safety/
