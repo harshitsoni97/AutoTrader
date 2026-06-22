@@ -103,7 +103,7 @@ class ScoringReview(BaseModel):
         description="Points to add/subtract from the deterministic composite score. Range ±5 only.",
     )
     rationale: str = Field(
-        max_length=1200,
+        max_length=2000,
         description="Why this symbol is the best setup — mention regime, sector, and technicals.",
     )
     concerns: list[str] = Field(
@@ -116,9 +116,9 @@ class ScoringReview(BaseModel):
     @field_validator("rationale", mode="before")
     @classmethod
     def _truncate_rationale(cls, v: str) -> str:
-        if isinstance(v, str) and len(v) > 1200:
-            logger.warning("ScoringReview.rationale exceeded limit: %d chars (limit 1200)", len(v))
-            return v[:1200]
+        if isinstance(v, str) and len(v) > 2000:
+            logger.warning("ScoringReview.rationale exceeded limit: %d chars (limit 2000)", len(v))
+            return v[:2000]
         return v
 
 

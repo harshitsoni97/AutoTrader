@@ -27,10 +27,12 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
 
     top = scored[0]
     symbol = top["symbol"]
-    current_price = top.get("current_price", 0)
-    atr = top.get("atr", current_price * 0.015)
+    current_price = top.get("current_price", 0) or 0
+    raw_atr = top.get("atr", None)
+    import math
+    atr = raw_atr if (raw_atr and not math.isnan(raw_atr) and raw_atr > 0) else current_price * 0.015
     pattern = top.get("pattern", "NONE")
-    vwap = top.get("vwap", current_price)
+    vwap = top.get("vwap", current_price) or current_price
 
     # Entry price logic
     if pattern in ("ORB", "BREAKOUT"):
@@ -50,8 +52,8 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
 
     # Position sizing
     risk_per_share = entry_price - stop_price
-    if risk_per_share <= 0:
-        risk_per_share = atr
+    if not risk_per_share or math.isnan(risk_per_share) or risk_per_share <= 0:
+        risk_per_share = atr if atr > 0 else entry_price * 0.015
 
     kelly_fraction = state.get("kelly_fraction", 0.0)
     if kelly_fraction > 0:
