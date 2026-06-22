@@ -15,15 +15,15 @@ AGENT_NAME = "RelativeStrengthAgent"
 
 SECTOR_WATCHLIST = {
     "Banking": ["HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN"],
-    "Capital_Goods": ["LT", "BEL", "HAL", "BHEL"],
+    "Capital_Goods": ["L&T", "BEL", "HAL", "BHEL"],
     "IT": ["TCS", "INFY", "WIPRO", "HCLTECH"],
     "Pharma": ["SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB"],
-    "Auto": ["MARUTI", "TATAMOTORS", "BAJAJAUT", "HEROMOTOCO"],
+    "Auto": ["MARUTI", "TMCV", "TMPV", "MM", "BAJAJ-AUTO"],
     "Realty": ["DLF", "GODREJPROP", "OBEROIRLTY"],
     "Metal": ["TATASTEEL", "JSWSTEEL", "HINDALCO"],
     "Energy": ["RELIANCE", "ONGC", "BPCL"],
     "FMCG": ["HINDUNILVR", "ITC", "NESTLEIND"],
-    "Midcap": ["POLYCAB", "DELHIVERY", "ZOMATO", "IRCTC"],
+    "Midcap": ["POLYCAB", "DELHIVERY", "ETERNAL", "IRCTC"],
 }
 
 
