@@ -234,7 +234,7 @@ class Notifier:
         )
         return self.send(subject, body)
 
-    def notify_compete_summary(self, competitor_results: list, run_date: str = "", dry_run: bool = True) -> dict[str, bool]:
+    def notify_compete_summary(self, competitor_results: list, run_date: str = "", dry_run: bool = True, trade_plan: dict | None = None) -> dict[str, bool]:
         if not self.cfg.notify_on_daily_summary or not competitor_results:
             return {}
         mode = "DRY RUN" if dry_run else "LIVE"
@@ -249,6 +249,20 @@ class Notifier:
 
         subject = f"{'🏆 Compete EOD Leaderboard' if eod else 'Compete Picks'} [{mode}] — {run_date}"
         lines = []
+
+        # Trade plan block (ATR-based levels from trade_construction_agent)
+        if trade_plan and trade_plan.get("symbol"):
+            tp = trade_plan
+            rr = tp.get("risk_reward", 0)
+            lines.append(
+                f"📊 *Trade Plan — {tp['symbol']}*\n"
+                f"   Entry: ₹{tp.get('entry', 0):.2f}  |  Stop: ₹{tp.get('stop', 0):.2f}  |  "
+                f"Target 1: ₹{tp.get('target1', 0):.2f}  |  Target 2: ₹{tp.get('target2', 0):.2f}\n"
+                f"   Qty: {tp.get('qty', 0)}  |  Risk:Reward: {rr:.1f}R  |  "
+                f"Capital: ₹{tp.get('position_size_inr', 0):,.0f}"
+            )
+            lines.append("")
+
         medals = ["🥇", "🥈", "🥉"]
         for i, r in enumerate(results):
             name = r.get("name", "?")

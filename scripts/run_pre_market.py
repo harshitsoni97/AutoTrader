@@ -111,6 +111,7 @@ def main():
             competitor_results,
             run_date=result.get("run_date", "unknown"),
             dry_run=result.get("dry_run", config.trading_policy.dry_run),
+            trade_plan=result.get("trade_plan", {}),
         )
 
     print(f"\nPre-market analysis complete.")

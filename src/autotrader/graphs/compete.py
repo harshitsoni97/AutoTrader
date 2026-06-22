@@ -43,10 +43,16 @@ def _risk_router(state: TradingState) -> str:
 
 
 def _compete_router(state: TradingState) -> str:
-    """After compete_coordinator: proceed to governance only in actual mode with a primary."""
+    """After compete_coordinator: always run trade_construction for ATR-based levels.
+    In actual mode with a primary, continue to full governance chain.
+    In dry_run mode, stop after trade_construction (no execution)."""
     cfg = load_config()
     if not cfg.compete.dry_run and cfg.compete.primary:
         return "execute"
+    # dry_run: still compute trade levels but skip governance/execution
+    scored = state.get("scored_opportunities", [])
+    if scored:
+        return "plan"
     return "done"
 
 
@@ -88,12 +94,13 @@ def build_compete_graph():
     graph.add_edge("technical_structure", "opportunity_scoring")
     graph.add_edge("opportunity_scoring", "compete_coordinator")
 
-    # After compete: dry_run → END; actual+primary → governance chain
+    # After compete: always plan trade levels; actual+primary → full governance chain
     graph.add_conditional_edges(
         "compete_coordinator",
         _compete_router,
-        {"execute": "governance", "done": END},
+        {"execute": "governance", "plan": "trade_construction", "done": END},
     )
+    graph.add_edge("trade_construction", END)
     graph.add_conditional_edges(
         "governance",
         _governance_router,

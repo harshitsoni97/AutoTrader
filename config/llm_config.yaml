@@ -33,7 +33,7 @@ llm:
   # ── Analysis tier — regime classification (HIGH stakes, 1 call/day) ──────────
   analysis_provider: "anthropic"
   analysis_model: "claude-sonnet-4-6"
-  analysis_max_tokens: 1024
+  analysis_max_tokens: 4096
   analysis_temperature: 0.2
   # OpenAI alternative: analysis_provider: "openai"  analysis_model: "gpt-5.4"  # or gpt-5.5 for highest quality
   # Google alternative: analysis_provider: "google"  analysis_model: "gemini-3.5-flash"  # stable
@@ -114,7 +114,7 @@ compete:
       analysis_provider: "anthropic"
       analysis_model: "claude-sonnet-4-6"
       analysis_temperature: 0.2
-      analysis_max_tokens: 1024
+      analysis_max_tokens: 4096
       report_provider: "anthropic"
       report_model: "claude-opus-4-8"
       report_max_tokens: 4096
@@ -130,7 +130,7 @@ compete:
       analysis_provider: "openai"
       analysis_model: "gpt-5.4"
       analysis_temperature: 0.2
-      analysis_max_tokens: 1024
+      analysis_max_tokens: 4096
       report_provider: "openai"
       report_model: "gpt-5.5"
       report_max_tokens: 4096
@@ -146,7 +146,7 @@ compete:
       analysis_provider: "google"
       analysis_model: "gemini-3.5-flash"
       analysis_temperature: 0.2
-      analysis_max_tokens: 1024
+      analysis_max_tokens: 4096
       report_provider: "google"
       report_model: "gemini-3.1-pro-preview"
       report_max_tokens: 4096
