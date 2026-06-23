@@ -407,6 +407,30 @@ def evaluate_scheme(
 # Main
 # ---------------------------------------------------------------------------
 
+# Curated backtest universe — liquid, well-traded NSE stocks across sectors.
+# Must exist in upstox_instruments.json on the target machine.
+BACKTEST_SYMBOLS = [
+    # Banking
+    "HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN", "KOTAKBANK",
+    # Capital Goods / Defence
+    "LT", "BEL", "HAL", "BHEL", "SIEMENS",
+    # IT
+    "TCS", "INFY", "WIPRO", "HCLTECH", "TECHM",
+    # Pharma
+    "SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB", "AUROPHARMA",
+    # Auto
+    "MARUTI", "BAJAJ-AUTO", "TATAMOTORS", "EICHERMOT", "HEROMOTOCO",
+    # Energy / Oil
+    "RELIANCE", "ONGC", "BPCL", "IOC", "NTPC",
+    # FMCG
+    "HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "DABUR",
+    # Metal
+    "TATASTEEL", "JSWSTEEL", "HINDALCO", "COALINDIA", "VEDL",
+    # Realty / Midcap
+    "DLF", "GODREJPROP", "ADANIPORTS", "INDUSINDBK", "BAJFINANCE",
+]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--months", type=int, default=6, help="Months of history to backtest")
@@ -415,10 +439,26 @@ def main():
 
     os.makedirs("reports", exist_ok=True)
 
-    # Load instrument map
+    # Check token upfront — fail fast with a clear message
+    if not os.environ.get("UPSTOX_ANALYTICS_TOKEN"):
+        logger.error(
+            "UPSTOX_ANALYTICS_TOKEN is not set.\n"
+            "Export it before running:\n"
+            "  export UPSTOX_ANALYTICS_TOKEN=<your_token>\n"
+            "  python scripts/run_backtest.py"
+        )
+        sys.exit(1)
+
+    # Load instrument map and filter to backtest universe only
     map_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "../config/upstox_instruments.json"))
     with open(map_path) as f:
-        instrument_map: dict = json.load(f)
+        full_map: dict = json.load(f)
+
+    instrument_map = {sym: full_map[sym] for sym in BACKTEST_SYMBOLS if sym in full_map}
+    missing = [sym for sym in BACKTEST_SYMBOLS if sym not in full_map]
+    if missing:
+        logger.warning("Symbols not in instrument map (will skip): %s", missing)
+    logger.info("Backtest universe: %d symbols", len(instrument_map))
 
     # Fetch data
     all_data = fetch_all_candles(instrument_map, args.months)
