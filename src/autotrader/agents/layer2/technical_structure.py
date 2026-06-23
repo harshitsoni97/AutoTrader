@@ -162,7 +162,7 @@ def _get_intraday_rows(symbol: str) -> list[dict]:
             return []
         today_str = date.today().strftime("%Y-%m-%d")
         from_str = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
-        rows = upstox_data.get_historical_candles(ikey, "30minute", 1, from_str, today_str)
+        rows = upstox_data.get_historical_candles(ikey, "minutes", 30, from_str, today_str)
         if rows:
             rows.sort(key=lambda r: r.get("timestamp", ""))
         return rows or []
