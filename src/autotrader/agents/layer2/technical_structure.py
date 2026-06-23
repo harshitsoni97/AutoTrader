@@ -307,7 +307,18 @@ def technical_structure_agent(state: TradingState) -> dict[str, Any]:
 
     for candidate in candidates:
         symbol = candidate["symbol"]
-        rows = get_stock_data(symbol, period="60d")
+        daily_rows = get_stock_data(symbol, period="60d")
+
+        # Fetch intraday rows early — used as fallback if daily unavailable
+        intraday_rows = _get_intraday_rows(symbol)
+        intra_atr = _intraday_atr(intraday_rows)
+        orb_data = _get_orb_data(intraday_rows)
+
+        # Prefer daily rows for EMA/RSI/ADX; fall back to intraday 30-min candles
+        # when daily data is blocked (e.g. yfinance 403 on cloud servers).
+        # 65 × 30-min candles (5 trading days) cover EMA50, ADX14, RSI14 comfortably.
+        rows = daily_rows if (daily_rows and len(daily_rows) >= 20) else intraday_rows
+        data_source = "daily" if (daily_rows and len(daily_rows) >= 20) else "intraday_30m"
 
         if not rows or len(rows) < 20:
             candidate["technical_score"] = 0.0
@@ -330,13 +341,8 @@ def technical_structure_agent(state: TradingState) -> dict[str, Any]:
         current_price = rows[-1]["close"]
         above_vwap = current_price > vwap if vwap > 0 else True
 
-        # Intraday candles for ATR and ORB
-        intraday_rows = _get_intraday_rows(symbol)
-        intra_atr = _intraday_atr(intraday_rows)
-        orb_data = _get_orb_data(intraday_rows)
-
-        # Prefer intraday ATR (15–25 pts for NSE stocks) over daily ATR (100+ pts)
-        daily_atr = _atr(rows, 14)
+        # ATR: prefer intraday (realistic stops), fall back to daily
+        daily_atr = _atr(daily_rows, 14) if daily_rows else 0.0
         atr = intra_atr if (intra_atr and intra_atr > 0) else daily_atr
 
         bb_upper, bb_mid, bb_lower = _bollinger_bands(closes)
@@ -353,8 +359,10 @@ def technical_structure_agent(state: TradingState) -> dict[str, Any]:
             "rsi": rsi,
             "adx": adx,
             "vwap": vwap,
+            "current_price": round(current_price, 2),
             "atr": round(atr, 2),
-            "atr_source": "intraday_30m" if intra_atr else "daily",
+            "atr_source": "intraday_30m" if intra_atr else data_source,
+            "indicators_source": data_source,
             "bb_upper": bb_upper,
             "bb_mid": bb_mid,
             "bb_lower": bb_lower,
