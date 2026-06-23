@@ -155,7 +155,7 @@ compete:
 # ── LLMOps ───────────────────────────────────────────────────────────────────
 # backend: "langsmith" | "mlflow" | "none"
 llmops:
-  backend: "none"
+  backend: "langsmith"
   project_name: "autotrader"
   langsmith_endpoint: "https://api.smith.langchain.com"
   mlflow_tracking_uri: "http://localhost:5000"
