@@ -9,7 +9,7 @@ trading_policy:
   max_monthly_loss_pct: 10
   max_risk_per_trade_pct: 0.5
   min_risk_reward: 2.0
-  minimum_score: 70
+  minimum_score: 60
   minimum_confidence: 0.75
   minimum_volume_multiple: 2.0
   stop_trading_after_losses: 3

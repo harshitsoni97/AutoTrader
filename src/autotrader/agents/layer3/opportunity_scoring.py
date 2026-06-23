@@ -19,12 +19,12 @@ AGENT_NAME = "OpportunityScoringAgent"
 # Default weights (must sum to 1.0)
 # options_sentiment gets a 5% weight carved from market_regime and sector_strength
 WEIGHTS = {
-    "market_regime": 0.18,
-    "sector_strength": 0.17,
-    "relative_strength": 0.20,
+    "market_regime": 0.15,
+    "sector_strength": 0.15,
+    "relative_strength": 0.15,
     "volume": 0.15,
     "catalyst": 0.15,
-    "technical": 0.10,
+    "technical": 0.20,
     "options_sentiment": 0.05,
 }
 

@@ -5,9 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import json
+import os
+from datetime import date, timedelta
+
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
-from autotrader.tools.market_data import get_nifty_data, get_stock_data
+from autotrader.tools.market_data import get_nifty_data
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +48,38 @@ def _rs_score(stock_ret: float, nifty_ret: float) -> float:
     return max(0.0, min(100.0, score))
 
 
+_RS_INSTRUMENT_MAP: dict | None = None
+
+
+def _get_rs_rows(symbol: str) -> list[dict]:
+    """Fetch daily rows via Upstox (primary) for RS computation."""
+    global _RS_INSTRUMENT_MAP
+    if _RS_INSTRUMENT_MAP is None:
+        map_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../../../config/upstox_instruments.json"))
+        try:
+            with open(map_path) as f:
+                _RS_INSTRUMENT_MAP = json.load(f)
+        except Exception:
+            _RS_INSTRUMENT_MAP = {}
+
+    ikey = _RS_INSTRUMENT_MAP.get(symbol)
+    if ikey:
+        try:
+            from autotrader.tools import upstox_data
+            today_str = date.today().strftime("%Y-%m-%d")
+            from_str = (date.today() - timedelta(days=15)).strftime("%Y-%m-%d")
+            rows = upstox_data.get_historical_candles(ikey, "days", 1, from_str, today_str)
+            if rows and len(rows) >= 2:
+                rows.sort(key=lambda r: r.get("timestamp", ""))
+                return rows
+        except Exception as exc:
+            logger.debug("[%s] Upstox RS fetch failed for %s: %s", AGENT_NAME, symbol, exc)
+
+    # Fallback to market_data (which has its own Upstox fallback)
+    from autotrader.tools.market_data import get_stock_data
+    return get_stock_data(symbol, period="10d") or []
+
+
 def relative_strength_agent(state: TradingState) -> dict[str, Any]:
     logger.info("[%s] Calculating relative strength", AGENT_NAME)
 
@@ -61,8 +97,8 @@ def relative_strength_agent(state: TradingState) -> dict[str, Any]:
 
     candidates: list[dict] = []
     for symbol in all_symbols:
-        rows = get_stock_data(symbol)
-        if not rows or len(rows) < 5:
+        rows = _get_rs_rows(symbol)
+        if not rows or len(rows) < 2:
             continue
         ret_5d = _pct_change(rows, 5)
         ret_1d = _pct_change(rows, 1)
