@@ -222,7 +222,7 @@ class Notifier:
         top_catalyst_line = "None"
         if catalysts:
             c = catalysts[0]
-            top_catalyst_line = f"{c['symbol']}: {c.get('reason', '')[:60]}"
+            top_catalyst_line = f"{c['symbol']}: {c.get('reason', '')[:120]}"
 
         body = (
             f"Regime: {regime} ({confidence*100:.0f}% confidence)\n"

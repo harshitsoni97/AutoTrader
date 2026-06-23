@@ -86,14 +86,17 @@ def main():
     from autotrader.tools.notifications import get_notifier
     notifier = get_notifier(config.notifications)
 
-    # End-of-day summary
-    notifier.notify_daily_summary({
-        "run_date": run_date,
-        "dry_run": result.get("dry_run", config.trading_policy.dry_run),
-        "trades": result.get("daily_trades_taken", 0),
-        "daily_pnl": round(result.get("daily_pnl", 0.0), 2),
-        "regime": result.get("market_regime", "n/a"),
-    })
+    # End-of-day summary — only send if there is something meaningful to report
+    trades_today = result.get("daily_trades_taken", 0)
+    daily_pnl = round(result.get("daily_pnl", 0.0), 2)
+    if trades_today > 0 or daily_pnl != 0.0:
+        notifier.notify_daily_summary({
+            "run_date": run_date,
+            "dry_run": result.get("dry_run", config.trading_policy.dry_run),
+            "trades": trades_today,
+            "daily_pnl": daily_pnl,
+            "regime": result.get("market_regime", "n/a"),
+        })
 
     # Compete leaderboard — which stack made/lost most today
     competitor_results = result.get("competitor_results", [])

@@ -48,13 +48,14 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
     else:
         entry_price = current_price
 
-    # Stop loss: 1.5x ATR below entry
-    stop_distance = atr * 1.5
+    # Stop loss: 1.0x ATR below entry (tighter, more realistic intraday)
+    stop_distance = atr * 1.0
     stop_price = round(entry_price - stop_distance, 2)
 
-    # Targets: 2R and 3R
-    target1 = round(entry_price + stop_distance * policy.min_risk_reward, 2)
-    target2 = round(entry_price + stop_distance * 3.0, 2)
+    # Target 1: 1R (1x stop distance) — realistic intraday move
+    # Target 2: 2R (2x stop distance) — stretch target if momentum holds
+    target1 = round(entry_price + stop_distance * 1.0, 2)
+    target2 = round(entry_price + stop_distance * policy.min_risk_reward, 2)
 
     # Position sizing
     risk_per_share = entry_price - stop_price
