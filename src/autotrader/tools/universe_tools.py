@@ -172,61 +172,82 @@ def _map_industry(industry: str) -> str:
     return "Midcap"
 
 
+def _momentum_score_from_rows(rows: list[dict]) -> float:
+    """Compute momentum score 0-100 from a list of OHLCV row dicts."""
+    if not rows or len(rows) < 5:
+        return 40.0
+    closes = [r["close"] for r in rows]
+    volumes = [r.get("volume", 0) for r in rows]
+    latest = closes[-1]
+    ma5 = sum(closes[-5:]) / 5
+    ma20 = sum(closes[-20:]) / 20 if len(closes) >= 20 else ma5
+    vol_5d = sum(volumes[-5:]) / 5 if volumes else 1
+    vol_20d = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else vol_5d
+    vol_surge = vol_5d / vol_20d if vol_20d > 0 else 1.0
+    price_vs_ma5 = (latest / ma5 - 1) * 100 if ma5 > 0 else 0
+    price_vs_ma20 = (latest / ma20 - 1) * 100 if ma20 > 0 else 0
+    score = 50.0
+    score += min(20, price_vs_ma5 * 4)
+    score += min(15, price_vs_ma20 * 2)
+    score += min(15, (vol_surge - 1) * 30)
+    return max(0.0, min(100.0, score))
+
+
 def momentum_screen(symbols: list[dict], top_n: int = 50) -> list[dict]:
     """Score each symbol by momentum (price vs MAs, volume surge).
-    
-    Uses yfinance for data; assigns momentum_score 0-100.
+
+    Uses Upstox daily candles as primary source (works on cloud servers).
+    Falls back to yfinance if Upstox unavailable.
     Returns top_n by score with source='momentum'.
     """
-    try:
-        import yfinance as yf
-        import pandas as pd
-    except ImportError:
-        logger.warning("yfinance not available for momentum screen")
-        return [{**s, "source": "index", "momentum_score": 50} for s in symbols[:top_n]]
+    import json, os
+    from datetime import date, timedelta
 
-    tickers = [f"{normalize_symbol(s['symbol'])}.NS" for s in symbols]
-    sym_map = {f"{normalize_symbol(s['symbol'])}.NS": s for s in symbols}
+    # Load instrument map for Upstox lookups
+    map_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../../config/upstox_instruments.json"))
+    instrument_map: dict = {}
+    try:
+        with open(map_path) as f:
+            instrument_map = json.load(f)
+    except Exception:
+        pass
+
     scored = []
 
-    # Batch download for efficiency
-    try:
-        data = yf.download(tickers, period="30d", interval="1d", progress=False, auto_adjust=True, group_by="ticker")
-    except Exception as e:
-        logger.warning("Batch yfinance download failed: %s", e)
-        return [{**s, "source": "index", "momentum_score": 50} for s in symbols[:top_n]]
+    for s in symbols:
+        sym = normalize_symbol(s["symbol"])
+        rows = []
 
-    for ticker in tickers:
-        sym_info = sym_map.get(ticker, {})
-        try:
-            if len(tickers) == 1:
-                df = data
-            else:
-                df = data[ticker] if ticker in data.columns.get_level_values(0) else None
-            if df is None or df.empty or len(df) < 5:
-                scored.append({**sym_info, "source": "index", "momentum_score": 40})
-                continue
-            close = df["Close"].dropna()
-            volume = df["Volume"].dropna()
-            if len(close) < 5:
-                scored.append({**sym_info, "source": "index", "momentum_score": 40})
-                continue
-            latest = float(close.iloc[-1])
-            ma5 = float(close.tail(5).mean())
-            ma20 = float(close.tail(20).mean()) if len(close) >= 20 else ma5
-            vol_5d = float(volume.tail(5).mean())
-            vol_20d = float(volume.tail(20).mean()) if len(volume) >= 20 else vol_5d
-            vol_surge = vol_5d / vol_20d if vol_20d > 0 else 1.0
-            price_vs_ma5 = (latest / ma5 - 1) * 100 if ma5 > 0 else 0
-            price_vs_ma20 = (latest / ma20 - 1) * 100 if ma20 > 0 else 0
-            score = 50.0
-            score += min(20, price_vs_ma5 * 4)   # +20 max if 5% above MA5
-            score += min(15, price_vs_ma20 * 2)  # +15 max if 7.5% above MA20
-            score += min(15, (vol_surge - 1) * 30)  # +15 max if 50% vol surge
-            score = max(0, min(100, score))
-            scored.append({**sym_info, "source": "momentum", "momentum_score": round(score, 1)})
-        except Exception:
-            scored.append({**sym_info, "source": "index", "momentum_score": 40})
+        # Primary: Upstox daily candles
+        ikey = instrument_map.get(sym)
+        if ikey:
+            try:
+                from autotrader.tools import upstox_data
+                today_str = date.today().strftime("%Y-%m-%d")
+                from_str = (date.today() - timedelta(days=40)).strftime("%Y-%m-%d")
+                rows = upstox_data.get_historical_candles(ikey, "days", 1, from_str, today_str) or []
+                if rows:
+                    rows.sort(key=lambda r: r.get("timestamp", ""))
+            except Exception as exc:
+                logger.debug("Upstox momentum fetch failed for %s: %s", sym, exc)
+
+        # Fallback: yfinance (may be blocked on cloud IPs)
+        if not rows or len(rows) < 5:
+            try:
+                import yfinance as yf
+                df = yf.download(f"{sym}.NS", period="30d", interval="1d", progress=False, auto_adjust=True)
+                if df is not None and not df.empty and len(df) >= 5:
+                    rows = [
+                        {"close": float(row["Close"]), "volume": float(row["Volume"]),
+                         "open": float(row["Open"]), "high": float(row["High"]), "low": float(row["Low"])}
+                        for _, row in df.iterrows()
+                    ]
+            except Exception:
+                pass
+
+        score = _momentum_score_from_rows(rows)
+        source = "momentum" if rows else "index"
+        scored.append({**s, "source": source, "momentum_score": round(score, 1)})
 
     scored.sort(key=lambda x: x.get("momentum_score", 0), reverse=True)
     return scored[:top_n]
