@@ -1,0 +1,9 @@
+{
+  "adx_threshold": 20,
+  "rsi_min": 50,
+  "stop_multiplier": 1.0,
+  "min_score": 60,
+  "target_rr_min": 1.0,
+  "_comment": "Auto-tuned by RLTuningAgent. Do NOT edit manually \u2014 values will be overwritten post-market.",
+  "_version": 1
+}

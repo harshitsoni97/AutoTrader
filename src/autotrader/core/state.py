@@ -76,6 +76,7 @@ class TradingState(TypedDict):
     trade_outcomes: list[dict]
     agent_scores: dict[str, float]
     learning_report_path: str
+    strategy_params: dict
 
 
 def create_initial_state(session_type: str = "pre_market") -> TradingState:
@@ -127,4 +128,5 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
         trade_outcomes=[],
         agent_scores={},
         learning_report_path="",
+        strategy_params={},
     )

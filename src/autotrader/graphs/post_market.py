@@ -8,6 +8,7 @@ from autotrader.agents.layer6.daily_learning import daily_learning_agent
 from autotrader.agents.layer6.agent_evaluator import agent_evaluator
 from autotrader.agents.layer6.long_term_memory import long_term_memory_agent
 from autotrader.agents.layer6.memory_compression import memory_compression_agent
+from autotrader.agents.layer6.rl_tuning_agent import rl_tuning_agent
 
 logger = structlog.get_logger()
 
@@ -33,6 +34,8 @@ def build_post_market_graph():
         graph.add_edge("agent_evaluator", "long_term_memory")
 
     graph.add_edge("long_term_memory", "memory_compression")
-    graph.add_edge("memory_compression", END)
+    graph.add_node("rl_tuning", rl_tuning_agent)
+    graph.add_edge("memory_compression", "rl_tuning")
+    graph.add_edge("rl_tuning", END)
 
     return graph.compile()

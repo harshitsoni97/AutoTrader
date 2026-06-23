@@ -37,6 +37,19 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
 
     raw_atr = top.get("atr", None)
     atr = raw_atr if (raw_atr and not math.isnan(raw_atr) and raw_atr > 0) else current_price * 0.015
+
+    # Read RL-tuned stop multiplier (default 1.0)
+    import json as _json
+    import os as _os
+    _sp_path = _os.path.normpath(
+        _os.path.join(_os.path.dirname(__file__), "../../../../config/strategy_params.json")
+    )
+    _stop_mult = 1.0
+    try:
+        with open(_sp_path) as _f:
+            _stop_mult = float(_json.load(_f).get("stop_multiplier", 1.0))
+    except Exception:
+        pass
     pattern = top.get("pattern", "NONE")
     vwap = top.get("vwap", current_price) or current_price
 
@@ -48,13 +61,13 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
     else:
         entry_price = current_price
 
-    # Stop loss: ORB uses ORB low; other patterns use 1.0x ATR below entry
+    # Stop loss: ORB uses ORB low; other patterns use stop_multiplier × ATR
     orb_low = top.get("orb_low", None)
     if pattern == "ORB" and orb_low and orb_low > 0 and orb_low < entry_price:
         stop_price = round(orb_low, 2)
         stop_distance = entry_price - stop_price
     else:
-        stop_distance = atr * 1.0
+        stop_distance = atr * _stop_mult
         stop_price = round(entry_price - stop_distance, 2)
 
     # Target 1: 1R (1x stop distance) — realistic intraday move

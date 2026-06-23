@@ -17,6 +17,20 @@ logger = logging.getLogger(__name__)
 AGENT_NAME = "TechnicalStructureAgent"
 
 _INSTRUMENT_MAP: dict[str, str] | None = None
+_STRATEGY_PARAMS: dict | None = None
+
+
+def _load_strategy_params() -> dict:
+    global _STRATEGY_PARAMS
+    params_path = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "../../../../config/strategy_params.json")
+    )
+    try:
+        with open(params_path) as f:
+            _STRATEGY_PARAMS = json.load(f)
+    except Exception:
+        _STRATEGY_PARAMS = {}
+    return _STRATEGY_PARAMS
 
 
 def _load_instrument_map() -> dict[str, str]:
@@ -220,7 +234,7 @@ def _detect_pattern(
         return "VWAP_CROSS"
 
     # Plain EMA alignment with momentum
-    if ema_aligned and rsi > 50:
+    if ema_aligned and rsi > 50:  # intentionally fixed at 50 — weakest signal
         return "EMA_ALIGNMENT"
 
     return "NONE"
@@ -236,7 +250,10 @@ def _technical_score(
     above_vwap: bool,
 ) -> float:
     # ADX gate: ranging/choppy market — zero score prevents false breakout entries
-    if adx < 20:
+    sp = _load_strategy_params()
+    adx_threshold = sp.get("adx_threshold", 20)
+    rsi_min_param = sp.get("rsi_min", 50)
+    if adx < adx_threshold:
         return 0.0
 
     score = 0.0
@@ -248,9 +265,10 @@ def _technical_score(
         score += 15
 
     # RSI momentum health (20 pts)
-    if 55 <= rsi <= 75:
+    rsi_mid = rsi_min_param + 5
+    if rsi_mid <= rsi <= 75:
         score += 20
-    elif 50 <= rsi < 55:
+    elif rsi_min_param <= rsi < rsi_mid:
         score += 12
     elif rsi > 75:
         score += 8  # overbought — momentum present but reversal risk
