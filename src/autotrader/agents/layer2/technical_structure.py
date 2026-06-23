@@ -10,7 +10,6 @@ from typing import Any
 
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
-from autotrader.tools.market_data import get_stock_data
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +149,25 @@ def _bb_squeeze(closes: list[float], period: int = 20, lookback: int = 50) -> bo
     ]
     avg_w = sum(past_widths) / len(past_widths) if past_widths else 0.0
     return avg_w > 0 and current_w < avg_w * 0.75
+
+
+def _get_daily_rows(symbol: str, days: int = 70) -> list[dict]:
+    """Fetch daily OHLCV candles from Upstox (primary source, works on cloud servers)."""
+    try:
+        from autotrader.tools import upstox_data
+        imap = _load_instrument_map()
+        ikey = imap.get(symbol)
+        if not ikey:
+            return []
+        today_str = date.today().strftime("%Y-%m-%d")
+        from_str = (date.today() - timedelta(days=days + 20)).strftime("%Y-%m-%d")
+        rows = upstox_data.get_historical_candles(ikey, "days", 1, from_str, today_str)
+        if rows:
+            rows.sort(key=lambda r: r.get("timestamp", ""))
+        return rows[-days:] if rows and len(rows) > days else (rows or [])
+    except Exception as exc:
+        logger.debug("[%s] Daily candles failed for %s: %s", AGENT_NAME, symbol, exc)
+        return []
 
 
 def _get_intraday_rows(symbol: str) -> list[dict]:
@@ -307,18 +325,18 @@ def technical_structure_agent(state: TradingState) -> dict[str, Any]:
 
     for candidate in candidates:
         symbol = candidate["symbol"]
-        daily_rows = get_stock_data(symbol, period="60d")
 
-        # Fetch intraday rows early — used as fallback if daily unavailable
+        # Primary: Upstox daily candles (authenticated, works on cloud servers)
+        daily_rows = _get_daily_rows(symbol)
+
+        # Intraday 30-min candles: always fetch for ATR + ORB; used as data fallback
         intraday_rows = _get_intraday_rows(symbol)
         intra_atr = _intraday_atr(intraday_rows)
         orb_data = _get_orb_data(intraday_rows)
 
-        # Prefer daily rows for EMA/RSI/ADX; fall back to intraday 30-min candles
-        # when daily data is blocked (e.g. yfinance 403 on cloud servers).
-        # 65 × 30-min candles (5 trading days) cover EMA50, ADX14, RSI14 comfortably.
-        rows = daily_rows if (daily_rows and len(daily_rows) >= 20) else intraday_rows
-        data_source = "daily" if (daily_rows and len(daily_rows) >= 20) else "intraday_30m"
+        # Select best available source for EMA/RSI/ADX computation
+        rows = daily_rows if len(daily_rows) >= 20 else intraday_rows
+        data_source = "upstox_daily" if len(daily_rows) >= 20 else "intraday_30m"
 
         if not rows or len(rows) < 20:
             candidate["technical_score"] = 0.0
@@ -341,9 +359,9 @@ def technical_structure_agent(state: TradingState) -> dict[str, Any]:
         current_price = rows[-1]["close"]
         above_vwap = current_price > vwap if vwap > 0 else True
 
-        # ATR: prefer intraday (realistic stops), fall back to daily
-        daily_atr = _atr(daily_rows, 14) if daily_rows else 0.0
-        atr = intra_atr if (intra_atr and intra_atr > 0) else daily_atr
+        # ATR: prefer intraday 30-min (realistic intraday stops), fall back to daily
+        upstox_daily_atr = _atr(daily_rows, 14) if daily_rows else 0.0
+        atr = intra_atr if (intra_atr and intra_atr > 0) else upstox_daily_atr
 
         bb_upper, bb_mid, bb_lower = _bollinger_bands(closes)
         pattern = _detect_pattern(rows, ema9, ema21, ema50, rsi, vwap, closes, orb_data)
