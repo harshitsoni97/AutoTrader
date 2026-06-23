@@ -202,27 +202,111 @@ def fetch_nifty_candles(months: int) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Per-day candidate scoring
+# Pre-compute indicators for all symbol × day combinations (done ONCE)
+# ---------------------------------------------------------------------------
+
+def precompute_indicators(
+    all_data: dict[str, list[dict]],
+    trading_days: list[str],
+    lookback: int = 60,
+) -> dict[tuple, dict]:
+    """
+    Returns {(symbol, day_str): indicator_dict} for every valid combination.
+    Done once upfront so the grid search is pure arithmetic.
+    """
+    logger.info("Pre-computing indicators for %d symbols × %d days...", len(all_data), len(trading_days))
+    cache: dict[tuple, dict] = {}
+
+    for sym_idx, (symbol, rows) in enumerate(all_data.items()):
+        if sym_idx % 200 == 0:
+            logger.info("  indicators: symbol %d/%d", sym_idx + 1, len(all_data))
+        # Build a date-indexed list once per symbol
+        row_by_date = {r["timestamp"][:10]: r for r in rows}
+        sorted_dates = sorted(row_by_date.keys())
+
+        for day_str in trading_days:
+            # Find index of day_str in sorted_dates
+            hist_dates = [d for d in sorted_dates if d <= day_str]
+            if len(hist_dates) < lookback:
+                continue
+            window_dates = hist_dates[-lookback:]
+            window = [row_by_date[d] for d in window_dates]
+            closes = [r["close"] for r in window]
+
+            ema9 = _ema(closes, 9)[-1]
+            ema21 = _ema(closes, 21)[-1]
+            ema50_series = _ema(closes, 50)
+            ema50 = ema50_series[-1] if len(ema50_series) >= 50 else ema21
+            rsi = _rsi(closes, 14)
+            adx = _adx(window, 14)
+            vwap = _vwap(window)
+            atr = _atr(window, 14)
+            above_vwap = closes[-1] > vwap if vwap > 0 else True
+            pattern = _detect_pattern(window, ema9, ema21, ema50, rsi, vwap, closes)
+
+            vols = [r["volume"] for r in window if r["volume"] > 0]
+            avg_vol = sum(vols[-20:]) / min(20, len(vols)) if vols else 1
+            vol_ratio = window[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0
+            vol_score = min(100.0, max(0.0, (vol_ratio - 1) * 50 + 50))
+
+            cache[(symbol, day_str)] = {
+                "symbol": symbol,
+                "date": day_str,
+                "close": closes[-1],
+                "atr": round(atr, 4),
+                "pattern": pattern,
+                "volume_score": round(vol_score, 1),
+                "adx": adx,
+                "rsi": rsi,
+                "ema9": ema9,
+                "ema21": ema21,
+                "ema50": ema50,
+                "above_vwap": above_vwap,
+            }
+
+    logger.info("Pre-computation done: %d symbol-day entries cached", len(cache))
+    return cache
+
+
+def get_day_candidates_from_cache(
+    cache: dict[tuple, dict],
+    day_str: str,
+    adx_threshold: float,
+    rsi_min: float,
+) -> list[dict]:
+    """Pull cached indicators for a day and apply adx/rsi gates + tech_score."""
+    candidates = []
+    for (sym, d), ind in cache.items():
+        if d != day_str:
+            continue
+        tech_score = _technical_score(
+            ind["ema9"], ind["ema21"], ind["ema50"],
+            ind["rsi"], ind["adx"], ind["pattern"], ind["above_vwap"],
+            adx_threshold, rsi_min,
+        )
+        candidates.append({**ind, "technical_score": tech_score})
+    return candidates
+
+
+# ---------------------------------------------------------------------------
+# Per-day candidate scoring (kept for reference, replaced by cache in grid)
 # ---------------------------------------------------------------------------
 
 def compute_day_candidates(
     all_data: dict[str, list[dict]],
-    day_idx: int,          # index into the sorted trading day list
+    day_idx: int,
     trading_days: list[str],
     lookback: int = 60,
     adx_threshold: float = 20,
     rsi_min: float = 50,
 ) -> list[dict]:
-    """Return scored candidates for a single simulated trading day."""
+    """Compute indicators for a single day without cache (used for one-off calls)."""
     today_str = trading_days[day_idx]
     candidates = []
-
     for symbol, rows in all_data.items():
-        # Find rows up to and including today
         hist = [r for r in rows if r["timestamp"][:10] <= today_str]
         if len(hist) < lookback:
             continue
-
         window = hist[-lookback:]
         closes = [r["close"] for r in window]
         ema9 = _ema(closes, 9)[-1]
@@ -237,25 +321,16 @@ def compute_day_candidates(
         pattern = _detect_pattern(window, ema9, ema21, ema50, rsi, vwap, closes)
         tech_score = _technical_score(ema9, ema21, ema50, rsi, adx, pattern, above_vwap,
                                       adx_threshold, rsi_min)
-
-        # Volume ratio (vs 20d avg)
         vols = [r["volume"] for r in window if r["volume"] > 0]
         avg_vol = sum(vols[-20:]) / min(20, len(vols)) if vols else 1
         vol_ratio = window[-1]["volume"] / avg_vol if avg_vol > 0 else 1.0
         vol_score = min(100.0, max(0.0, (vol_ratio - 1) * 50 + 50))
-
         candidates.append({
-            "symbol": symbol,
-            "date": today_str,
-            "close": closes[-1],
-            "atr": round(atr, 4),
-            "pattern": pattern,
-            "technical_score": tech_score,
-            "volume_score": round(vol_score, 1),
-            "adx": adx,
-            "rsi": rsi,
-            "above_vwap": above_vwap,
+            "symbol": symbol, "date": today_str, "close": closes[-1],
+            "atr": round(atr, 4), "pattern": pattern, "technical_score": tech_score,
+            "volume_score": round(vol_score, 1), "adx": adx, "rsi": rsi, "above_vwap": above_vwap,
         })
+    return candidates
 
     return candidates
 
@@ -340,15 +415,22 @@ def evaluate_scheme(
     rsi_min: float,
     stop_mult: float,
     target_rr: float,
+    indicator_cache: dict | None = None,
 ) -> dict:
     """Run one (weights, params) combo across given day indices. Returns metrics."""
     trades = []
 
     for day_idx in day_indices:
-        candidates = compute_day_candidates(
-            all_data, day_idx, trading_days,
-            adx_threshold=adx_threshold, rsi_min=rsi_min,
-        )
+        day_str = trading_days[day_idx]
+        if indicator_cache is not None:
+            candidates = get_day_candidates_from_cache(
+                indicator_cache, day_str, adx_threshold, rsi_min,
+            )
+        else:
+            candidates = compute_day_candidates(
+                all_data, day_idx, trading_days,
+                adx_threshold=adx_threshold, rsi_min=rsi_min,
+            )
         if not candidates:
             continue
 
@@ -503,6 +585,9 @@ def main():
     total_combos = len(weight_schemes) * len(min_score_grid) * len(adx_thresh_grid) * len(rsi_min_grid) * len(stop_mult_grid) * len(target_rr_grid)
     logger.info("Grid search: %d combinations × %d train days", total_combos, len(train_days))
 
+    # Pre-compute all indicators once — grid search then uses the cache (fast)
+    indicator_cache = precompute_indicators(all_data, trading_days)
+
     train_results = []
     combo_num = 0
 
@@ -513,7 +598,7 @@ def main():
                     for stop_m in stop_mult_grid:
                         for tgt_rr in target_rr_grid:
                             combo_num += 1
-                            if combo_num % 50 == 0:
+                            if combo_num % 200 == 0:
                                 logger.info("  combo %d/%d...", combo_num, total_combos)
 
                             result = evaluate_scheme(
@@ -524,6 +609,7 @@ def main():
                                 rsi_min=rsi_m,
                                 stop_mult=stop_m,
                                 target_rr=tgt_rr,
+                                indicator_cache=indicator_cache,
                             )
                             train_results.append({
                                 "scheme": scheme_name,
@@ -559,6 +645,7 @@ def main():
             rsi_min=r["rsi_min"],
             stop_mult=r["stop_mult"],
             target_rr=r["target_rr"],
+            indicator_cache=indicator_cache,
         )
         val_results.append({**r, "val": val})
         logger.info("  scheme=%-12s | val trades=%d win_rate=%.1f%% avg_pnl=%.3f%% metric=%.4f",
