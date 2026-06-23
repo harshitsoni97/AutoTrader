@@ -88,7 +88,7 @@ def compete_evaluator_agent(state: TradingState) -> dict[str, Any]:
         leaderboard.append({
             "rank": rank,
             "name": r["name"],
-            "model": r["model"],
+            "model": r.get("report_model") or r.get("analysis_model") or r.get("fast_model", ""),
             "pick": r["pick"],
             "entry_price": r.get("entry_price"),
             "closing_price": r.get("closing_price"),

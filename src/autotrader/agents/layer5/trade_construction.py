@@ -45,9 +45,12 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
         _os.path.join(_os.path.dirname(__file__), "../../../../config/strategy_params.json")
     )
     _stop_mult = 1.0
+    _target_rr_min = None
     try:
         with open(_sp_path) as _f:
-            _stop_mult = float(_json.load(_f).get("stop_multiplier", 1.0))
+            _sp = _json.load(_f)
+            _stop_mult = float(_sp.get("stop_multiplier", 1.0))
+            _target_rr_min = float(_sp.get("target_rr_min", 0.0)) or None
     except Exception:
         pass
     pattern = top.get("pattern", "NONE")
@@ -71,9 +74,10 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
         stop_price = round(entry_price - stop_distance, 2)
 
     # Target 1: 1R (1x stop distance) — realistic intraday move
-    # Target 2: 2R (2x stop distance) — stretch target if momentum holds
+    # Target 2: RL-tuned R multiple (target_rr_min from strategy_params), else policy default
+    rr_mult = _target_rr_min if _target_rr_min else policy.min_risk_reward
     target1 = round(entry_price + stop_distance * 1.0, 2)
-    target2 = round(entry_price + stop_distance * policy.min_risk_reward, 2)
+    target2 = round(entry_price + stop_distance * rr_mult, 2)
 
     # Position sizing
     risk_per_share = entry_price - stop_price
