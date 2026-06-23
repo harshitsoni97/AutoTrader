@@ -1,0 +1,12 @@
+{
+  "__meta__": {
+    "total_days": 1,
+    "prev_state_key": "bullish|neutral",
+    "prev_action": [
+      "_hold",
+      0
+    ],
+    "last_reward": 0.3889,
+    "epsilon": 0.2959
+  }
+}
