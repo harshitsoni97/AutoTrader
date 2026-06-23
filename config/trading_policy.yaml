@@ -9,7 +9,12 @@ trading_policy:
   max_monthly_loss_pct: 10
   max_risk_per_trade_pct: 0.5
   min_risk_reward: 2.0
-  minimum_score: 70
+  # minimum_score: composite score floor for a candidate to be eligible for execution.
+  # With range_bound regime (60pts) + bearish options (20pts) at current weights,
+  # the theoretical max for a perfect technical + volume stock is ~63. Setting
+  # threshold above 63 blocks all trades in non-bullish conditions regardless of
+  # individual stock quality. 62 allows exactly the best setups through.
+  minimum_score: 62
   minimum_confidence: 0.75
   minimum_volume_multiple: 2.0
   stop_trading_after_losses: 3
