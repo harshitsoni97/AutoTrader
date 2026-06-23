@@ -48,9 +48,14 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
     else:
         entry_price = current_price
 
-    # Stop loss: 1.0x ATR below entry (tighter, more realistic intraday)
-    stop_distance = atr * 1.0
-    stop_price = round(entry_price - stop_distance, 2)
+    # Stop loss: ORB uses ORB low; other patterns use 1.0x ATR below entry
+    orb_low = top.get("orb_low", None)
+    if pattern == "ORB" and orb_low and orb_low > 0 and orb_low < entry_price:
+        stop_price = round(orb_low, 2)
+        stop_distance = entry_price - stop_price
+    else:
+        stop_distance = atr * 1.0
+        stop_price = round(entry_price - stop_distance, 2)
 
     # Target 1: 1R (1x stop distance) — realistic intraday move
     # Target 2: 2R (2x stop distance) — stretch target if momentum holds
