@@ -12,12 +12,10 @@ This gives a realistic "what would we have made" number without live order track
 
 from __future__ import annotations
 
-import logging
+import structlog
 import math
 from datetime import date, timedelta
 from typing import Any
-
-import structlog
 
 from autotrader.core.messages import audit_entry
 from autotrader.core.state import TradingState
