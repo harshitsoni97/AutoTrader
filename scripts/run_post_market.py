@@ -52,8 +52,18 @@ def main():
         logger.warning("safety_checks_issues", issues=issues)
         # Post-market runs even if market is closed (expected)
     
-    # In production, this state would be loaded from the intraday session
+    # Load today's pre-market session state (positions, trade_plans, scored_opportunities)
+    # so post-market can compute dry-run assumed P&L against actual closing prices.
+    from autotrader.core.session_store import load_session
     state = create_initial_state(session_type="post_market")
+    saved = load_session()
+    if saved:
+        state.update({k: v for k, v in saved.items() if v is not None})
+        logger.info("session_state_loaded", positions=len(saved.get("positions", [])),
+                    trades=saved.get("daily_trades_taken", 0))
+    else:
+        logger.warning("no_session_state_found_running_blind")
+
     graph = build_post_market_graph()
     
     logger.info("starting_post_market_analysis")
@@ -95,6 +105,7 @@ def main():
         "trades": trades_today,
         "daily_pnl": daily_pnl,
         "regime": result.get("market_regime", "n/a"),
+        "trade_outcomes": result.get("trade_outcomes", []),
     })
 
     # Compete leaderboard — which stack made/lost most today

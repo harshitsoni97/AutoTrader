@@ -88,6 +88,10 @@ def main():
         get_notifier(config.notifications).notify_error("pre_market", str(e))
         raise
 
+    # Persist session state so post-market can compute dry-run assumed P&L
+    from autotrader.core.session_store import save_session
+    save_session(result)
+
     # Generate and save report
     report = generate_daily_trade_report(result)
     report_filename = f"{result.get('run_date', 'unknown')}_pre_market_report.md"

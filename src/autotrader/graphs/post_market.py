@@ -4,6 +4,7 @@ from langgraph.graph import StateGraph, END
 from autotrader.core.config import load_config
 from autotrader.core.state import TradingState
 from autotrader.agents.compete.evaluator import compete_evaluator_agent
+from autotrader.agents.layer6.dry_run_pnl import dry_run_pnl_agent
 from autotrader.agents.layer6.daily_learning import daily_learning_agent
 from autotrader.agents.layer6.agent_evaluator import agent_evaluator
 from autotrader.agents.layer6.long_term_memory import long_term_memory_agent
@@ -18,12 +19,14 @@ def build_post_market_graph():
     cfg = load_config()
     graph = StateGraph(TradingState)
 
+    graph.add_node("dry_run_pnl", dry_run_pnl_agent)
     graph.add_node("daily_learning", daily_learning_agent)
     graph.add_node("agent_evaluator", agent_evaluator)
     graph.add_node("long_term_memory", long_term_memory_agent)
     graph.add_node("memory_compression", memory_compression_agent)
 
-    graph.set_entry_point("daily_learning")
+    graph.set_entry_point("dry_run_pnl")
+    graph.add_edge("dry_run_pnl", "daily_learning")
     graph.add_edge("daily_learning", "agent_evaluator")
 
     if cfg.compete.enabled:

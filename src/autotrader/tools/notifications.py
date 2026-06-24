@@ -187,13 +187,36 @@ class Notifier:
     def notify_daily_summary(self, summary: dict) -> dict[str, bool]:
         if not self.cfg.notify_on_daily_summary:
             return {}
-        subject = f"Daily Summary — {summary.get('run_date', '')}"
+        dry_run = summary.get('dry_run', True)
+        mode = "DRY RUN" if dry_run else "LIVE"
+        subject = f"Daily Summary [{mode}] — {summary.get('run_date', '')}"
+
+        pnl = summary.get('daily_pnl', 0.0)
+        pnl_label = "Assumed P&L" if dry_run else "Realized P&L"
+        pnl_emoji = "🟢" if pnl > 0 else ("🔴" if pnl < 0 else "⚪")
+
         body = (
-            f"Mode: {'DRY RUN' if summary.get('dry_run') else 'LIVE'}\n"
+            f"Mode: {mode}\n"
+            f"Regime: {summary.get('regime', 'n/a')}\n"
             f"Trades taken: {summary.get('trades', 0)}\n"
-            f"Daily P&L: ₹{summary.get('daily_pnl', 0.0)}\n"
-            f"Regime: {summary.get('regime', 'n/a')}"
+            f"{pnl_emoji} {pnl_label}: ₹{pnl:,.0f}"
         )
+
+        # Append per-trade breakdown when available
+        outcomes = summary.get("trade_outcomes", [])
+        if outcomes:
+            body += "\n\n*Trade outcomes:*"
+            for o in outcomes:
+                sym = o.get("symbol", "?")
+                scenario = o.get("scenario", "").replace("_", " ")
+                o_pnl = o.get("pnl", 0)
+                eod = o.get("eod_price")
+                entry = o.get("entry")
+                line = f"\n• {sym}: ₹{o_pnl:+,.0f} ({scenario})"
+                if entry and eod:
+                    line += f" | entry ₹{entry:.1f} → EOD ₹{eod:.1f}"
+                body += line
+
         return self.send(subject, body)
 
     def notify_pre_market_summary(self, state: dict) -> dict[str, bool]:
