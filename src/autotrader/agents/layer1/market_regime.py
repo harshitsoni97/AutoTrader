@@ -37,23 +37,44 @@ def _determine_regime(
     vix: float,
     fii_net: float,
     global_pct: float,
+    gift_gap_pct: float = 0.0,
 ) -> tuple[str, float]:
-    """Map market conditions to a regime label with confidence score."""
+    """Map market conditions to a regime label with confidence score.
+
+    Inputs are deliberately short-horizon (2-day Nifty, overnight GIFT gap)
+    so the regime reflects today's conditions, not a multi-week trend.
+    GIFT Nifty gap is the highest-information pre-open forward signal and
+    gets the most weight among same-day inputs.
+    """
     score_bull = 0.0
     score_bear = 0.0
     score_vol = 0.0
 
-    # Nifty trend
-    if nifty_pct > 1.0:
+    # GIFT Nifty gap — best forward-looking signal for today's open (highest weight)
+    if gift_gap_pct > 0.5:
         score_bull += 30
-    elif nifty_pct > 0.0:
-        score_bull += 15
-    elif nifty_pct < -1.0:
+    elif gift_gap_pct > 0.15:
+        score_bull += 18
+    elif gift_gap_pct > 0:
+        score_bull += 8
+    elif gift_gap_pct < -0.5:
         score_bear += 30
+    elif gift_gap_pct < -0.15:
+        score_bear += 18
     else:
-        score_bear += 15
+        score_bear += 8
 
-    # VIX
+    # Short-term Nifty trend (2-day return — intraday context, not multi-week trend)
+    if nifty_pct > 1.0:
+        score_bull += 20
+    elif nifty_pct > 0.0:
+        score_bull += 10
+    elif nifty_pct < -1.0:
+        score_bear += 20
+    else:
+        score_bear += 10
+
+    # VIX — fear gauge (low VIX = complacency = bullish for trend-following)
     if vix < 14:
         score_bull += 25
     elif vix < 18:
@@ -64,23 +85,23 @@ def _determine_regime(
     elif vix > 18:
         score_vol += 15
 
-    # FII activity
+    # FII activity (cash segment net flows)
     if fii_net > 1000:
-        score_bull += 25
-    elif fii_net > 0:
-        score_bull += 10
-    elif fii_net < -1000:
-        score_bear += 25
-    else:
-        score_bear += 10
-
-    # Global cue
-    if global_pct > 0.5:
         score_bull += 20
+    elif fii_net > 0:
+        score_bull += 8
+    elif fii_net < -1000:
+        score_bear += 20
+    else:
+        score_bear += 8
+
+    # Global overnight cue (S&P 500 + Nasdaq avg)
+    if global_pct > 0.5:
+        score_bull += 15
     elif global_pct > 0:
         score_bull += 5
     elif global_pct < -0.5:
-        score_bear += 20
+        score_bear += 15
     else:
         score_bear += 5
 
@@ -89,8 +110,6 @@ def _determine_regime(
         return "range_bound", 0.5
 
     if score_vol > 35:
-        if score_bear > score_bull:
-            return "high_volatility", round(score_vol / total, 2)
         return "high_volatility", round(score_vol / total, 2)
 
     if score_bull > score_bear * 1.5:
@@ -183,8 +202,10 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
     global_mkts = get_global_markets()
     gift_data = get_gift_nifty()
 
-    nifty_pct = _pct_change(nifty, 5)
-    banknifty_pct = _pct_change(banknifty, 5)
+    # Use 2-day return for intraday regime — shorter memory so today's
+    # conditions dominate; GIFT gap provides the actual forward-looking signal.
+    nifty_pct = _pct_change(nifty, 2)
+    banknifty_pct = _pct_change(banknifty, 2)
     vix = vix_data.get("vix", 15.0)
     fii_net = fii_dii.get("fii_net", 0.0)
     sp500_pct = global_mkts.get("sp500_change_pct", 0.0)
@@ -195,10 +216,10 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
     # FII derivatives net position (index futures long - short)
     fii_future_net = fii_deriv.get("fii_index_future_net", 0.0)
 
-    # GIFT Nifty gap vs previous close
+    # GIFT Nifty gap vs previous close — highest-information pre-open signal
     gift_gap_pct = _compute_gift_gap(gift_data, nifty)
 
-    regime, confidence = _determine_regime(nifty_pct, vix, fii_net, global_pct)
+    regime, confidence = _determine_regime(nifty_pct, vix, fii_net, global_pct, gift_gap_pct)
 
     # Optional LLM synthesis — narrative enrichment + confidence refinement
     llm_enrichment: dict = {}

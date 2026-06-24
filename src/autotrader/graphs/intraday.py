@@ -7,6 +7,7 @@ from autotrader.agents.compete.hypothetical_monitor import compete_hypothetical_
 from autotrader.agents.layer1.market_regime import market_regime_agent
 from autotrader.agents.layer5.monitoring import monitoring_agent
 from autotrader.agents.layer5.reentry import intra_reentry_agent
+from autotrader.agents.layer5.late_trade import late_trade_agent
 
 logger = structlog.get_logger()
 
@@ -16,13 +17,19 @@ def build_intraday_graph():
     cfg = load_config()
     graph = StateGraph(TradingState)
 
+    # Refresh regime every cycle (Nifty moves intraday)
     graph.add_node("market_regime", market_regime_agent)
+    # Monitor / manage existing positions
     graph.add_node("monitoring", monitoring_agent)
+    # If regime flipped to favorable and no trades placed yet, fire a late trade
+    graph.add_node("late_trade", late_trade_agent)
+    # If an existing position hit target1, redeploy freed capital
     graph.add_node("reentry", intra_reentry_agent)
 
     graph.set_entry_point("market_regime")
     graph.add_edge("market_regime", "monitoring")
-    graph.add_edge("monitoring", "reentry")
+    graph.add_edge("monitoring", "late_trade")
+    graph.add_edge("late_trade", "reentry")
 
     if cfg.compete.enabled:
         graph.add_node("compete_hypothetical_monitor", compete_hypothetical_monitor_agent)
