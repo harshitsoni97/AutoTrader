@@ -150,7 +150,12 @@ class Notifier:
                 logger.warning("unknown notification channel: %s", channel)
                 continue
             try:
-                results[channel] = sender(subject, body, self.cfg.timeout_seconds)
+                ok = sender(subject, body, self.cfg.timeout_seconds)
+                results[channel] = ok
+                if ok:
+                    logger.info("notification sent via %s: %s", channel, subject)
+                else:
+                    logger.warning("notification FAILED via %s: %s", channel, subject)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("notification channel %s raised: %s", channel, exc)
                 results[channel] = False
