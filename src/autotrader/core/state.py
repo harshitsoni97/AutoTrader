@@ -51,9 +51,13 @@ class TradingState(TypedDict):
     risk_reason: str
 
     # Layer 5 outputs
-    trade_plan: dict            # {symbol, entry, stop, target1, target2, position_size}
+    trade_plan: dict            # {symbol, entry, stop, target1, target2, position_size} — first plan (compat)
+    trade_plans: list[dict]     # all plans for this session (multi-trade)
     orders: Annotated[list[dict], operator.add]
     positions: list[dict]
+
+    # Risk agent output propagated to trade construction
+    kelly_fraction: float
 
     # P&L tracking
     daily_pnl: float
@@ -114,6 +118,8 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
         risk_passed=False,
         risk_reason="",
         trade_plan={},
+        trade_plans=[],
+        kelly_fraction=0.0,
         orders=[],
         positions=[],
         daily_pnl=0.0,

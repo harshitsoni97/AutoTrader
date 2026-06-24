@@ -1,7 +1,7 @@
 trading_policy:
   enabled: true
-  max_daily_trades: 3
-  max_concurrent_positions: 2
+  max_daily_trades: 6
+  max_concurrent_positions: 3
   max_capital_per_trade_pct: 10
   max_sector_exposure_pct: 30
   max_daily_loss_pct: 2

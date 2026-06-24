@@ -75,15 +75,16 @@ def governance_agent(state: TradingState) -> dict[str, Any]:
     if confidence < policy.minimum_confidence:
         return reject(f"Market confidence too low ({confidence:.2f} < {policy.minimum_confidence})")
 
-    # 9. No-reentry check
+    # 9. No-reentry check: remove already-held symbols from the eligible list
     if not policy.allow_reentry_same_stock:
-        top_symbol = scored[0]["symbol"] if scored else ""
         existing_symbols = {p.get("symbol") for p in positions}
         order_symbols = {o.get("symbol") for o in state.get("orders", [])}
-        if top_symbol in existing_symbols or top_symbol in order_symbols:
-            return reject(f"Re-entry not allowed for {top_symbol}")
+        blocked = existing_symbols | order_symbols
+        scored = [s for s in scored if s["symbol"] not in blocked]
+        if not scored:
+            return reject("No eligible symbols after filtering already-held positions")
 
-    reason = "All governance checks passed"
+    reason = f"All governance checks passed — {len(scored)} eligible opportunity(s)"
     msg = create_message(
         source=AGENT_NAME, target="RiskAgent",
         payload={"approved": True, "reason": reason, "top_symbol": scored[0]["symbol"] if scored else ""},

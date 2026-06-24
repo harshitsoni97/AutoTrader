@@ -1,8 +1,7 @@
-"""Execution Agent — places orders via the broker interface.
+"""Execution Agent — places orders for all trade plans.
 
-In dry-run mode (trading_policy.dry_run = true) no real broker call is made.
-The assumed fill is the plan entry price with zero slippage. Post-market
-learning compares this assumed fill against the actual end-of-day price.
+In dry-run mode no real broker call is made. Assumed fill = plan entry price,
+zero slippage. Post-market learning compares assumed vs actual end-of-day price.
 """
 
 from __future__ import annotations
@@ -23,19 +22,11 @@ AGENT_NAME = "ExecutionAgent"
 
 
 def _idempotency_key(symbol: str, run_date: str, entry: float, qty: int) -> str:
-    """Stable tag identifying this exact trade intent for the session.
-
-    A repeated execution run for the same plan produces the same key, so the
-    order is never placed twice (deduped against existing orders and via the
-    broker tag).
-    """
     raw = f"{symbol}|{run_date}|{entry:.2f}|{qty}"
-    digest = hashlib.sha1(raw.encode()).hexdigest()[:10]
-    return f"AT-{digest}"
+    return "AT-" + hashlib.sha1(raw.encode()).hexdigest()[:10]
 
 
 def _dry_run_fill(trade_plan: dict, tag: str) -> dict:
-    """Simulate a fill at plan entry price with zero slippage."""
     return {
         "order_id": f"DRY-{tag}",
         "symbol": trade_plan["symbol"],
@@ -50,41 +41,30 @@ def _dry_run_fill(trade_plan: dict, tag: str) -> dict:
     }
 
 
-def execution_agent(state: TradingState) -> dict[str, Any]:
-    trade_plan = state.get("trade_plan", {})
-    if not trade_plan:
-        entry = audit_entry(agent=AGENT_NAME, action="no_trade_plan", data={})
-        return {"audit_trail": [entry]}
-
+def _execute_single(
+    trade_plan: dict,
+    run_date: str,
+    is_dry_run: bool,
+    broker: Any,
+    existing_tags: set[str],
+) -> tuple[dict | None, dict | None, str | None]:
+    """Execute one plan. Returns (order, position, skip_reason)."""
     symbol = trade_plan["symbol"]
     qty = trade_plan["qty"]
     entry_price = trade_plan["entry"]
-    is_dry_run = state.get("dry_run", True)
-    run_date = state.get("run_date", "")
-
     tag = _idempotency_key(symbol, run_date, entry_price, qty)
 
-    # Idempotency guard: if an order with this tag already exists in state, skip.
-    for existing in state.get("orders", []):
-        if existing.get("tag") == tag:
-            logger.warning("[%s] Duplicate execution suppressed for tag=%s", AGENT_NAME, tag)
-            dup_entry = audit_entry(agent=AGENT_NAME, action="duplicate_suppressed", data={"tag": tag, "symbol": symbol})
-            return {"audit_trail": [dup_entry]}
-
-    cfg = load_config()
+    if tag in existing_tags:
+        logger.warning("[%s] Duplicate suppressed: tag=%s symbol=%s", AGENT_NAME, tag, symbol)
+        return None, None, f"duplicate:{tag}"
 
     if is_dry_run:
         order = _dry_run_fill(trade_plan, tag)
         logger.info("[%s] DRY RUN — assumed fill: %s x%d @ %.2f", AGENT_NAME, symbol, qty, entry_price)
     else:
-        broker = get_broker(cfg.broker)
         order = broker.place_order(
-            symbol=symbol,
-            qty=qty,
-            side="BUY",
-            order_type=ORDER_TYPE_LIMIT,
-            price=entry_price,
-            tag=tag,
+            symbol=symbol, qty=qty, side="BUY",
+            order_type=ORDER_TYPE_LIMIT, price=entry_price, tag=tag,
         )
         slippage_bps = (order["slippage"] / entry_price) * 10000
         logger.info(
@@ -92,17 +72,12 @@ def execution_agent(state: TradingState) -> dict[str, Any]:
             AGENT_NAME, order["order_id"], symbol, qty, order["fill_price"], slippage_bps,
         )
 
-    # Notify (entry placed) — never raises into the trading path.
-    get_notifier(cfg.notifications).notify_order(order)
-
     fill_price = order["fill_price"]
-    slippage_bps = (order["slippage"] / entry_price) * 10000 if not is_dry_run else 0.0
-
     position = {
         "symbol": symbol,
         "qty": qty,
         "entry_price": fill_price,
-        "assumed_entry": entry_price,   # always the plan price (for dry-run comparison)
+        "assumed_entry": entry_price,
         "stop": trade_plan["stop"],
         "target1": trade_plan["target1"],
         "target2": trade_plan["target2"],
@@ -111,33 +86,77 @@ def execution_agent(state: TradingState) -> dict[str, Any]:
         "unrealized_pnl": 0.0,
         "dry_run": is_dry_run,
     }
+    return order, position, None
 
-    msg = create_message(
-        source=AGENT_NAME, target="MonitoringAgent",
-        symbol=symbol,
-        payload={
+
+def execution_agent(state: TradingState) -> dict[str, Any]:
+    # Prefer the full trade_plans list; fall back to single trade_plan for compat
+    trade_plans: list[dict] = state.get("trade_plans", [])
+    if not trade_plans:
+        single = state.get("trade_plan", {})
+        if single:
+            trade_plans = [single]
+
+    if not trade_plans:
+        entry = audit_entry(agent=AGENT_NAME, action="no_trade_plan", data={})
+        return {"audit_trail": [entry]}
+
+    is_dry_run = state.get("dry_run", True)
+    run_date = state.get("run_date", "")
+    existing_tags = {o.get("tag") for o in state.get("orders", [])}
+
+    cfg = load_config()
+    broker = get_broker(cfg.broker) if not is_dry_run else None
+    notifier = get_notifier(cfg.notifications)
+
+    all_orders: list[dict] = []
+    all_positions: list[dict] = []
+    audit_entries: list[dict] = []
+    msgs: list[dict] = []
+    trades_placed = 0
+
+    for plan in trade_plans:
+        order, position, skip_reason = _execute_single(plan, run_date, is_dry_run, broker, existing_tags)
+        if skip_reason:
+            audit_entries.append(audit_entry(
+                agent=AGENT_NAME, action="duplicate_suppressed",
+                data={"reason": skip_reason, "symbol": plan["symbol"]},
+            ))
+            continue
+
+        notifier.notify_order(order)
+        existing_tags.add(order["tag"])
+        all_orders.append(order)
+        all_positions.append(position)
+        trades_placed += 1
+
+        slippage_bps = 0.0 if is_dry_run else (order["slippage"] / plan["entry"]) * 10000
+        msgs.append(create_message(
+            source=AGENT_NAME, target="MonitoringAgent",
+            symbol=plan["symbol"],
+            payload={
+                "order_id": order["order_id"],
+                "fill_price": order["fill_price"],
+                "qty": plan["qty"],
+                "slippage_bps": round(slippage_bps, 2),
+                "dry_run": is_dry_run,
+            },
+        ))
+        audit_entries.append(audit_entry(agent=AGENT_NAME, action="order_placed", data={
             "order_id": order["order_id"],
-            "fill_price": fill_price,
-            "qty": qty,
+            "symbol": plan["symbol"],
+            "qty": plan["qty"],
+            "requested_price": plan["entry"],
+            "fill_price": order["fill_price"],
             "slippage_bps": round(slippage_bps, 2),
             "dry_run": is_dry_run,
-        },
-    )
-    entry_audit = audit_entry(agent=AGENT_NAME, action="order_placed", data={
-        "order_id": order["order_id"],
-        "symbol": symbol,
-        "qty": qty,
-        "requested_price": entry_price,
-        "fill_price": fill_price,
-        "slippage_bps": round(slippage_bps, 2),
-        "dry_run": is_dry_run,
-        "mode": "DRY_RUN" if is_dry_run else "LIVE",
-    })
+            "mode": "DRY_RUN" if is_dry_run else "LIVE",
+        }))
 
     return {
-        "orders": [order],
-        "positions": [position],
-        "daily_trades_taken": state.get("daily_trades_taken", 0) + 1,
-        "messages": [msg],
-        "audit_trail": [entry_audit],
+        "orders": all_orders,
+        "positions": state.get("positions", []) + all_positions,
+        "daily_trades_taken": state.get("daily_trades_taken", 0) + trades_placed,
+        "messages": msgs,
+        "audit_trail": audit_entries,
     }
