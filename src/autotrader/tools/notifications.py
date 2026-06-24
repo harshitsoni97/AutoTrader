@@ -21,18 +21,18 @@ Required env vars per channel:
 
 from __future__ import annotations
 
-import logging
 import os
 import smtplib
 from email.mime.text import MIMEText
 from typing import TYPE_CHECKING
 
+import structlog
 import requests
 
 if TYPE_CHECKING:
     from autotrader.core.config import NotificationConfig
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def _post(url: str, *, json=None, data=None, auth=None, timeout: float = 10.0) -> bool:
@@ -42,9 +42,9 @@ def _post(url: str, *, json=None, data=None, auth=None, timeout: float = 10.0) -
             resp = requests.post(url, json=json, data=data, auth=auth, timeout=timeout)
             if 200 <= resp.status_code < 300:
                 return True
-            logger.warning("notification POST %s -> HTTP %d: %s", url, resp.status_code, resp.text[:200])
+            logger.warning("notification_post_failed", url=url, status=resp.status_code, body=resp.text[:200])
         except Exception as exc:  # noqa: BLE001 — notifications must never crash trading
-            logger.warning("notification POST failed (attempt %d): %s", attempt + 1, exc)
+            logger.warning("notification_post_error", attempt=attempt+1, error=str(exc))
     return False
 
 
@@ -153,9 +153,9 @@ class Notifier:
                 ok = sender(subject, body, self.cfg.timeout_seconds)
                 results[channel] = ok
                 if ok:
-                    logger.info("notification sent via %s: %s", channel, subject)
+                    logger.info("notification_sent", channel=channel, subject=subject)
                 else:
-                    logger.warning("notification FAILED via %s: %s", channel, subject)
+                    logger.warning("notification_failed", channel=channel, subject=subject)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("notification channel %s raised: %s", channel, exc)
                 results[channel] = False
