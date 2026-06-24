@@ -13,7 +13,7 @@ References:
 from __future__ import annotations
 
 import json
-import logging
+import structlog
 import os
 import random
 import time
@@ -26,7 +26,7 @@ from typing import Any
 import requests
 from pydantic import BaseModel, Field, ValidationError
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 ORDER_TYPE_MARKET = "MARKET"
 ORDER_TYPE_LIMIT = "LIMIT"

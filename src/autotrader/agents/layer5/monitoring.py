@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+import structlog
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,7 +12,7 @@ from autotrader.core.state import TradingState
 from autotrader.tools.broker_tools import get_broker
 from autotrader.tools.notifications import get_notifier
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "MonitoringAgent"
 

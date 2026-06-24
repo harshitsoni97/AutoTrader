@@ -18,7 +18,7 @@ governance → risk → execution operate on the primary stack's decision.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import Any
 
 from autotrader.agents.layer1.catalyst_intelligence import _llm_enrich_catalysts
@@ -34,7 +34,7 @@ from autotrader.core.llm import make_stack_llms
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "CompeteCoordinator"
 

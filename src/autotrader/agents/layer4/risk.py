@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+import structlog
 from datetime import date
 from typing import Any
 
@@ -13,7 +13,7 @@ from autotrader.memory.long_term import LongTermMemory
 from autotrader.tools.market_data import get_stock_data
 from autotrader.tools.nse_tools import get_asm_gsm_list, get_corporate_actions
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "RiskAgent"
 MIN_AVG_VOLUME = 500_000

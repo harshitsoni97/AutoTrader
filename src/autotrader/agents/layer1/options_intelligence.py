@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import Any
 
 from autotrader.core.messages import audit_entry, create_message
@@ -10,7 +10,7 @@ from autotrader.core.state import TradingState
 from autotrader.tools.nse_tools import get_options_chain
 from autotrader.tools import upstox_data
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "OptionsIntelligenceAgent"
 

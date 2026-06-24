@@ -1,7 +1,7 @@
 """Universe building tools — index constituents, momentum screen, events."""
 from __future__ import annotations
 
-import logging
+import structlog
 import random
 import time
 from datetime import datetime, timedelta
@@ -9,7 +9,7 @@ from typing import Any
 
 import requests
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 NSE_BASE = "https://www.nseindia.com"
 # niftyindices.com hosts the public constituent CSVs (nseindia.com path returns 404)

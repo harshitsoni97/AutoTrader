@@ -7,7 +7,7 @@ Uses stop_hit / target1_hit / target2_hit flags to avoid duplicate notifications
 
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import Any
 
 from autotrader.core.config import load_config
@@ -15,7 +15,7 @@ from autotrader.core.messages import audit_entry
 from autotrader.core.state import TradingState
 from autotrader.tools.notifications import get_notifier
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 AGENT_NAME = "CompeteHypotheticalMonitor"
 
 

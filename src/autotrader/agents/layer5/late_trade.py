@@ -10,14 +10,14 @@ entry price before placing.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import Any
 
 from autotrader.core.config import load_config
 from autotrader.core.messages import audit_entry
 from autotrader.core.state import TradingState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "LateTradeTriggerAgent"
 

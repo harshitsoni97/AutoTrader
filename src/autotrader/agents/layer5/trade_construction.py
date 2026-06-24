@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json as _json
-import logging
+import structlog
 import math
 import os as _os
 from typing import Any
@@ -12,7 +12,7 @@ from autotrader.core.config import load_config
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "TradeConstructionAgent"
 

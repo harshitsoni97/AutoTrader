@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import logging
+import structlog
 from datetime import datetime, timedelta
 from typing import Any
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def _yf_download(ticker: str, period: str = "5d", interval: str = "1d") -> list[dict]:

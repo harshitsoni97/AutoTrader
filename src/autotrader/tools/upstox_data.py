@@ -9,7 +9,7 @@ Base URL: https://api.upstox.com
 
 from __future__ import annotations
 
-import logging
+import structlog
 import os
 import time
 from datetime import date, timedelta
@@ -18,7 +18,7 @@ from urllib.parse import quote, urlencode
 
 import requests
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 BASE_URL = "https://api.upstox.com"
 _TIMEOUT = 10

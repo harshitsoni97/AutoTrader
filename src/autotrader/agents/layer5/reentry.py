@@ -11,7 +11,7 @@ New position is sized to that freed capital, capped at max_capital_per_trade_pct
 from __future__ import annotations
 
 import hashlib
-import logging
+import structlog
 import math
 from typing import Any
 
@@ -19,7 +19,7 @@ from autotrader.core.config import load_config
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "IntraReentryAgent"
 

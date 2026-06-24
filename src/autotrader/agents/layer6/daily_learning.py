@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
+
+import structlog
 
 from autotrader.core.config import load_config
 from autotrader.core.llm import ReportInsights, get_report_llm, structured
@@ -13,7 +14,7 @@ from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.prompts import get_prompt
 from autotrader.core.state import TradingState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "DailyLearningAgent"
 

@@ -8,7 +8,7 @@ Primary sources (OCI-friendly):
 
 from __future__ import annotations
 
-import logging
+import structlog
 import random
 import time
 from datetime import date, timedelta, datetime, timezone
@@ -16,7 +16,7 @@ from typing import Any
 
 import requests
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 NSE_BASE = "https://www.nseindia.com"
 BSE_BASE = "https://api.bseindia.com/BseIndiaAPI/api"

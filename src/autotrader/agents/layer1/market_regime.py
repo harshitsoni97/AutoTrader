@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import Any
 
 from autotrader.core.config import load_config
@@ -20,7 +20,7 @@ from autotrader.tools.market_data import (
 from autotrader.tools.nse_tools import get_fii_dii_data, get_fii_derivatives
 from autotrader.tools import upstox_data
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "MarketRegimeAgent"
 

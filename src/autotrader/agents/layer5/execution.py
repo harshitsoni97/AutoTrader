@@ -7,7 +7,7 @@ zero slippage. Post-market learning compares assumed vs actual end-of-day price.
 from __future__ import annotations
 
 import hashlib
-import logging
+import structlog
 from typing import Any
 
 from autotrader.core.config import load_config
@@ -16,7 +16,7 @@ from autotrader.core.state import TradingState
 from autotrader.tools.broker_tools import ORDER_TYPE_LIMIT, get_broker
 from autotrader.tools.notifications import get_notifier
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "ExecutionAgent"
 

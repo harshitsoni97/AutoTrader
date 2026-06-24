@@ -14,16 +14,17 @@ Q-table key: "{regime}|{perf_bucket}" → {"param:direction": [q_value, visit_co
 from __future__ import annotations
 
 import json
-import logging
 import math
 import os
 import random
 from typing import Any
 
+import structlog
+
 from autotrader.core.messages import audit_entry
 from autotrader.core.state import TradingState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "RLTuningAgent"
 

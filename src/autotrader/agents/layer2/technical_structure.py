@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import logging
+import structlog
 import os
 from datetime import date, timedelta
 from typing import Any
@@ -11,7 +11,7 @@ from typing import Any
 from autotrader.core.messages import audit_entry, create_message
 from autotrader.core.state import TradingState
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "TechnicalStructureAgent"
 

@@ -1,7 +1,7 @@
 """Universe Builder Agent — dynamic stock universe for the trading pipeline."""
 from __future__ import annotations
 
-import logging
+import structlog
 from typing import Any
 
 from autotrader.core.config import load_config
@@ -15,7 +15,7 @@ from autotrader.tools.universe_tools import (
     momentum_screen,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 AGENT_NAME = "UniverseBuilderAgent"
 
