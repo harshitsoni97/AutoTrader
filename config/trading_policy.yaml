@@ -2,12 +2,12 @@ trading_policy:
   enabled: true
   max_daily_trades: 6
   max_concurrent_positions: 3
-  max_capital_per_trade_pct: 10
-  max_sector_exposure_pct: 30
+  max_capital_per_trade_pct: 34
+  max_sector_exposure_pct: 40
   max_daily_loss_pct: 2
   max_weekly_loss_pct: 5
   max_monthly_loss_pct: 10
-  max_risk_per_trade_pct: 0.5
+  max_risk_per_trade_pct: 1.0
   min_risk_reward: 2.0
   # minimum_score: composite score floor for a candidate to be eligible for execution.
   # With range_bound regime (60pts) + bearish options (20pts) at current weights,
@@ -20,7 +20,7 @@ trading_policy:
   stop_trading_after_losses: 3
   allow_reentry_same_stock: false
   allow_overnight_positions: false
-  total_capital: 1000000
+  total_capital: 100000
   blocked_regimes:
     - "high_volatility_bear"
     - "risk_off_extreme"
