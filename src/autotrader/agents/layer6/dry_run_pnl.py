@@ -26,7 +26,14 @@ AGENT_NAME = "DryRunPnLAgent"
 
 
 def _eod_price(symbol: str) -> float | None:
-    """Fetch today's closing price for a symbol via Upstox daily candle."""
+    """Fetch today's closing price for a symbol.
+
+    Strategy:
+    1. LTP (last traded price) — after 15:30 IST this equals the closing price.
+       Works even when historical daily candles haven't been finalized yet.
+    2. Historical daily candle — fallback; returns yesterday's close if today's
+       candle isn't yet settled, so only use when LTP is unavailable.
+    """
     try:
         from autotrader.agents.layer2.technical_structure import _load_instrument_map
         from autotrader.tools import upstox_data
@@ -34,12 +41,25 @@ def _eod_price(symbol: str) -> float | None:
         ikey = imap.get(symbol)
         if not ikey:
             return None
+
+        # Primary: LTP after market close = today's closing price
+        ltp_data = upstox_data.get_ltp([ikey])
+        if ltp_data and ikey in ltp_data:
+            price = float(ltp_data[ikey])
+            if price > 0:
+                logger.info("eod_price_via_ltp", symbol=symbol, price=price)
+                return price
+
+        # Fallback: most recent settled daily candle
         today = date.today().isoformat()
-        yesterday = (date.today() - timedelta(days=3)).isoformat()
-        rows = upstox_data.get_historical_candles(ikey, "days", 1, yesterday, today)
+        from_date = (date.today() - timedelta(days=5)).isoformat()
+        rows = upstox_data.get_historical_candles(ikey, "days", 1, from_date, today)
         if rows:
             rows.sort(key=lambda r: r.get("timestamp", ""))
-            return float(rows[-1]["close"])
+            price = float(rows[-1]["close"])
+            logger.info("eod_price_via_candle", symbol=symbol, price=price,
+                        candle_date=rows[-1].get("timestamp", "")[:10])
+            return price
     except Exception as exc:
         logger.warning("eod_price_fetch_failed", symbol=symbol, error=str(exc))
     return None

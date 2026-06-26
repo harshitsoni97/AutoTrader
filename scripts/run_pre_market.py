@@ -98,16 +98,8 @@ def main():
     path = save_report(report, report_filename)
     logger.info("pre_market_report_saved", report_path=path)
 
-    # Notify pre-market summary (regime + go/no-go) if configured.
     from autotrader.tools.notifications import get_notifier
     notifier = get_notifier(config.notifications)
-    notifier.notify_daily_summary({
-        "run_date": result.get("run_date", "unknown"),
-        "dry_run": result.get("dry_run", config.trading_policy.dry_run),
-        "trades": result.get("daily_trades_taken", 0),
-        "daily_pnl": round(result.get("daily_pnl", 0.0), 2),
-        "regime": result.get("market_regime", "n/a"),
-    })
 
     # Notify compete stack picks if compete mode is enabled.
     competitor_results = result.get("competitor_results", [])
