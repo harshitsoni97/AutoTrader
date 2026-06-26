@@ -139,6 +139,25 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
         entry = audit_entry(agent=AGENT_NAME, action="no_valid_price", data={"scored": len(scored)})
         return {"trade_plan": {}, "trade_plans": [], "audit_trail": [entry]}
 
+    # Portfolio-level allocation: distribute total_capital across plans weighted by score.
+    # Each plan's share = (score / sum_scores) × total_capital, capped at max_capital_per_trade_pct.
+    total_capital = policy.total_capital
+    max_per_trade = total_capital * policy.max_capital_per_trade_pct / 100
+    total_score = sum(p["score"] for p in trade_plans) or 1.0
+    for p in trade_plans:
+        weight = p["score"] / total_score
+        allocated = min(weight * total_capital, max_per_trade)
+        qty = max(1, int(allocated / p["entry"]))
+        p["qty"] = qty
+        p["position_size_inr"] = round(qty * p["entry"], 2)
+        p["risk_inr"] = round(qty * (p["entry"] - p["stop"]), 2)
+        p["reward_inr"] = round(qty * (p["target1"] - p["entry"]), 2)
+        p["allocation_pct"] = round(weight * 100, 1)
+        logger.info(
+            "[%s] Allocation: %s score=%.1f weight=%.1f%% allocated=₹%.0f qty=%d",
+            AGENT_NAME, p["symbol"], p["score"], weight * 100, allocated, qty,
+        )
+
     first_plan = trade_plans[0]
     msgs = [
         create_message(source=AGENT_NAME, target="ExecutionAgent", symbol=p["symbol"], payload=p)
