@@ -7,27 +7,28 @@ A production-grade, multi-agent intraday trading system for Indian equities (NSE
 ## Table of Contents
 
 1. [Philosophy](#philosophy)
-2. [Architecture Overview](#architecture-overview)
-3. [Agent Layers](#agent-layers)
-4. [Three Execution Graphs](#three-execution-graphs)
-5. [Workflow Step Classification](#workflow-step-classification)
-6. [Quick Start](#quick-start)
-7. [Installation](#installation)
-8. [Configuration](#configuration)
-9. [LLM Configuration](#llm-configuration)
-10. [API Keys and External Dependencies](#api-keys-and-external-dependencies)
-11. [Broker Connectors](#broker-connectors)
-12. [Notifications](#notifications)
-13. [Running the Platform](#running-the-platform)
-14. [Dry-Run Mode](#dry-run-mode)
-15. [Output and Reports](#output-and-reports)
-16. [Memory System](#memory-system)
-17. [Safety Controls and Governance](#safety-controls-and-governance)
-18. [LLMOps — Tracing & Prompt Repository](#llmops--tracing--prompt-repository)
-19. [Testing](#testing)
-20. [Project Structure](#project-structure)
-21. [Extending the Platform](#extending-the-platform)
-22. [Disclaimer](#disclaimer)
+2. [Recent Changes (2026-06)](#recent-changes-2026-06)
+3. [Architecture Overview](#architecture-overview)
+4. [Agent Layers](#agent-layers)
+5. [Execution Graphs](#execution-graphs)
+6. [Workflow Step Classification](#workflow-step-classification)
+7. [Quick Start](#quick-start)
+8. [Installation](#installation)
+9. [Configuration](#configuration)
+10. [LLM Configuration](#llm-configuration)
+11. [API Keys and External Dependencies](#api-keys-and-external-dependencies)
+12. [Broker Connectors](#broker-connectors)
+13. [Notifications](#notifications)
+14. [Running the Platform](#running-the-platform)
+15. [Dry-Run Mode](#dry-run-mode)
+16. [Output and Reports](#output-and-reports)
+17. [Memory System](#memory-system)
+18. [Safety Controls and Governance](#safety-controls-and-governance)
+19. [LLMOps — Tracing & Prompt Repository](#llmops--tracing--prompt-repository)
+20. [Testing](#testing)
+21. [Project Structure](#project-structure)
+22. [Extending the Platform](#extending-the-platform)
+23. [Disclaimer](#disclaimer)
 
 ---
 
@@ -38,6 +39,27 @@ AutoTrader operates on three principles:
 - **Signal alignment over single-factor bets** — a trade is taken only when market regime, sector strength, relative strength, volume, catalyst, and technical structure all agree.
 - **Governance before execution** — nine deterministic policy checks gate every trade. No opportunity is taken if daily loss limits, position counts, or regime constraints are breached.
 - **Learning without self-modification** — the Layer 6 agents observe, evaluate, and store patterns, but they never rewrite strategy code or change config values automatically. All strategy changes require a human review cycle.
+
+---
+
+## Recent Changes (2026-06)
+
+- **Multi-trade, score-weighted sizing** — pre-market sizes the top N opportunities and distributes `total_capital` across them weighted by score (was: one trade taking the whole book).
+- **Unified Upstox pricing (`tools/price_utils.py`)** — entry/EOD P&L, the compete leaderboard, and intraday monitoring all use one Upstox-backed source, so assumed P&L and the leaderboard reconcile. yfinance removed from pricing.
+- **Monitoring sees the live market in dry-run** — `monitoring` now uses real Upstox LTP instead of the MockBroker's static price, so stops/targets actually trigger in paper mode.
+- **Adaptive targets** — T2 reward:risk is chosen per-setup from ADX (trend), volume conviction, and an RSI overbought guard (`_adaptive_target_rr`); the RL-tuned value is only a floor. Fixes the old `target_rr_min=1.0` collapse where T1==T2.
+- **Daily-ATR sizing** — stops/targets size on daily ATR, not the tiny 30-min bar ATR.
+- **Compete leaderboard joint ranking** — tied P&L shares a rank/medal; removes the positional advantage of the first-listed stack.
+- **Holiday hard-stop** — pre-market skips entirely on NSE holidays/weekends and sends a "Market Closed" notification.
+- **Instrument-map refresh + pre-flight** — `scripts/update_instruments.py` rebuilds the full NSE map (~2400 symbols); a missing symbol triggers a Slack warning (no silent ₹0 P&L).
+- **Trade journal** — `reports/trade_journal.jsonl` records plan vs. realized outcome per trade (RR chosen, ATR, T1/T2/stop hits) — the dataset for evaluating/tuning the adaptive logic.
+- **Intraday `late_trade` and `reentry` agents** — fire waiting opportunities when the regime turns favorable, and redeploy capital freed at T1.
+- **Session persistence (`core/session_store.py`)** — pre-market state bridges to post-market for accurate assumed-P&L.
+- **Structured logging** — all agents/tools migrated to `structlog`.
+- **Workflow docs** — see [`docs/AGENT_WORKFLOW.md`](docs/AGENT_WORKFLOW.md) and `scripts/render_graphs.py`.
+
+> ⚠️ **Security:** all credentials (broker, LLM, Upstox, notification tokens) come
+> from environment variables only — never commit them to config files.
 
 ---
 
@@ -152,16 +174,23 @@ AutoTrader operates on three principles:
 
 ---
 
-## Three Execution Graphs
+## Execution Graphs
+
+> A visual reference for every graph (Mermaid diagrams + an agent→tool map) lives
+> in [`docs/AGENT_WORKFLOW.md`](docs/AGENT_WORKFLOW.md). Render the *live* compiled
+> graphs with `python3 scripts/render_graphs.py`.
 
 ### Pre-Market Graph (`graphs/pre_market.py`)
-Runs at **08:00 IST** before the NSE open. Performs the full pipeline from market regime analysis through to order placement (or dry-run assumed fill). The graph uses `conditional_edges` to short-circuit at governance and risk gates — no further agents execute if a gate fails.
+Runs before the NSE open. Full pipeline from market regime analysis through to order placement (or dry-run assumed fill). Uses `conditional_edges` to short-circuit at governance and risk gates. Sizes the **top N opportunities** (score-weighted across `total_capital`), not just one.
+
+### Compete Graph (`graphs/compete.py`)
+Used when `compete.enabled`. Same shared data pipeline, but `compete_coordinator` re-runs catalyst/regime/scoring through **each provider stack** (Anthropic / OpenAI / Google) and records each stack's pick. In dry-run all stacks are tracked hypothetically; in live mode the `primary` stack drives real orders. The EOD leaderboard ranks stacks by realized P&L with **joint ranking on ties** (no positional bias).
 
 ### Intraday Graph (`graphs/intraday.py`)
-Runs on a **5-minute loop** from 09:15 to 15:30 IST. Refreshes market regime, re-checks governance, and monitors open positions for stop/target triggers.
+Loops during market hours: refreshes regime → **monitoring** (stop/target/T1-partial using **real Upstox LTP**, even in dry-run) → **late_trade** (fires waiting opportunities if the regime turned favorable) → **reentry** (redeploys capital freed at T1) → compete hypothetical monitor.
 
 ### Post-Market Graph (`graphs/post_market.py`)
-Runs at **15:45 IST** after the market closes. Evaluates the session, stores validated patterns in long-term memory, and produces all daily reports.
+After the market closes: **dry_run_pnl** (EOD prices via Upstox, simulates outcomes, writes the **trade journal**) → daily_learning → agent_evaluator → compete_evaluator → memory → **rl_tuning** (Q-learning nudge to `strategy_params.json`).
 
 ---
 
@@ -384,8 +413,14 @@ QDRANT_API_KEY=your_qdrant_key
 # Generate at: https://developer.upstox.com → Analytics API → Analytics Token
 UPSTOX_ANALYTICS_TOKEN=your_upstox_analytics_token
 
-# yfinance and NSE scraper are used automatically as fallback when the above
-# token is absent or the Upstox call fails — no key required for fallbacks.
+# All price lookups (entry/EOD P&L, compete leaderboard, intraday monitoring) go
+# through a single Upstox-backed helper, autotrader.tools.price_utils, so the
+# assumed P&L and the compete leaderboard always reconcile. The instrument map
+# (config/upstox_instruments.json) resolves SYMBOL -> instrument_key; refresh it
+# with `python3 scripts/update_instruments.py` (public file, no token needed —
+# recommended as a daily cron before pre-market). A symbol missing from the map
+# triggers a Slack pre-flight warning. NSE scraper remains a fallback for a few
+# non-price data points; yfinance is no longer used for pricing.
 
 # --- Notifications (optional; see Notifications section) ---
 # Enable in config/notifications.yaml (or NOTIFICATIONS_ENABLED=true) and pick channels.
