@@ -103,6 +103,32 @@ def main():
         get_notifier(config.notifications).notify_error("pre_market", str(e))
         raise
 
+    # Pre-flight: warn if any scored/traded symbol is missing from the Upstox
+    # instrument map. A missing symbol silently yields ₹0 P&L (no price lookup),
+    # so surface it loudly on Slack instead of letting it pass unnoticed.
+    try:
+        from autotrader.agents.layer2.technical_structure import _load_instrument_map
+        imap = _load_instrument_map()
+        check_symbols = {o.get("symbol") for o in result.get("scored_opportunities", [])}
+        check_symbols |= {p.get("symbol") for p in result.get("positions", [])}
+        missing = sorted(s for s in check_symbols if s and s not in imap)
+        if missing:
+            logger.warning("symbols_missing_from_instrument_map", missing=missing,
+                           map_size=len(imap))
+            from autotrader.tools.notifications import get_notifier
+            get_notifier(config.notifications).send(
+                subject=f"⚠️ Instrument map missing {len(missing)} symbol(s)",
+                body=(
+                    "These symbols are not in config/upstox_instruments.json, so "
+                    "they will get NO live price and ₹0 P&L:\n"
+                    f"{', '.join(missing)}\n\n"
+                    "Fix: run `python3 scripts/update_instruments.py` to refresh "
+                    f"the map (currently {len(imap)} symbols)."
+                ),
+            )
+    except Exception as exc:
+        logger.warning("instrument_map_preflight_failed", error=str(exc))
+
     # Persist session state so post-market can compute dry-run assumed P&L
     from autotrader.core.session_store import save_session
     save_session(result)
