@@ -81,6 +81,11 @@ def _execute_single(
         "stop": trade_plan["stop"],
         "target1": trade_plan["target1"],
         "target2": trade_plan["target2"],
+        # Plan metadata carried for the trade journal / future RL tuning
+        "target2_rr": trade_plan.get("target2_rr"),
+        "atr_used": trade_plan.get("atr_used"),
+        "pattern": trade_plan.get("pattern"),
+        "score": trade_plan.get("score"),
         "order_id": order["order_id"],
         "status": "OPEN",
         "unrealized_pnl": 0.0,

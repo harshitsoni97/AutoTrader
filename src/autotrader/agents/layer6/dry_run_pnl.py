@@ -110,6 +110,9 @@ def dry_run_pnl_agent(state: TradingState) -> dict[str, Any]:
             "target2": pos.get("target2"),
             "qty": pos.get("qty"),
             "pattern": pos.get("pattern", "N/A"),
+            "score": pos.get("score"),
+            "target2_rr": pos.get("target2_rr"),
+            "atr_used": pos.get("atr_used"),
             "rr": round((pos.get("target1", 0) - (pos.get("assumed_entry") or pos.get("entry_price", 0))) /
                         max(0.01, (pos.get("assumed_entry") or pos.get("entry_price", 1)) - pos.get("stop", 0)), 2),
         })
@@ -122,6 +125,19 @@ def dry_run_pnl_agent(state: TradingState) -> dict[str, Any]:
             scenario=result["scenario"],
             pnl=result["pnl"],
         )
+
+    # Append to the trade journal — the dataset for evaluating the adaptive
+    # target logic (and future RL tuning of its breakpoints).
+    try:
+        from autotrader.core.trade_journal import append_outcomes
+        append_outcomes(
+            run_date=state.get("run_date", ""),
+            regime=state.get("market_regime", "unknown"),
+            dry_run=dry_run,
+            outcomes=outcomes,
+        )
+    except Exception as exc:
+        logger.warning("trade_journal_call_failed", error=str(exc))
 
     entry = audit_entry(agent=AGENT_NAME, action="dry_run_pnl_computed", data={
         "positions": len(positions),

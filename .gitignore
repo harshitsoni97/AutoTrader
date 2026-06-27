@@ -3,3 +3,4 @@
 .env
 reports/
 .claude/worktrees/
+reports/trade_journal.jsonl
