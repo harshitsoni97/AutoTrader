@@ -22,12 +22,26 @@ AGENT_NAME = "CompeteEvaluator"
 
 
 def _fetch_closing_price(symbol: str) -> float | None:
-    """Fetch today's closing price for symbol via yfinance (.NS suffix for NSE)."""
+    """Fetch TODAY's closing price for symbol via yfinance (.NS suffix for NSE).
+
+    yfinance's period="1d" silently returns the most recent trading day's candle
+    when the market is closed (holiday/weekend). We must validate that the candle
+    is actually dated today — otherwise we compare a stale entry against the prior
+    day's close and report a phantom P&L (e.g. +0.28% on a market holiday).
+    """
     try:
         import yfinance as yf
+        from datetime import date as _date
         ticker = yf.Ticker(f"{symbol}.NS")
         hist = ticker.history(period="1d")
         if hist.empty:
+            return None
+        # Validate the candle's date matches today; if not, the market was closed.
+        last_ts = hist.index[-1]
+        candle_date = last_ts.date() if hasattr(last_ts, "date") else None
+        if candle_date is not None and candle_date != _date.today():
+            logger.info("[%s] %s: latest candle is %s, not today — market closed, no P&L",
+                        AGENT_NAME, symbol, candle_date)
             return None
         return float(hist["Close"].iloc[-1])
     except Exception as exc:

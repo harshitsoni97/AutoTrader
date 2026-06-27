@@ -15,12 +15,19 @@ This invalidates most P&L conclusions below. With the market closed:
   → DECISION NEEDED: for paper/dry-run, should pre-market SKIP entirely on
     holidays (return early) instead of running anyway? Recommend yes —
     simulating trades with no market data only pollutes the RL/learning data.
-- **Compete leaderboard showed +0.28% — this is SUSPICIOUS.** If the market
-  was closed, where did a price move come from? Either:
-  (a) stale/previous-day candle being compared, or
-  (b) the holiday was a partial/special session, or
-  (c) compete's hypothetical_monitor fabricated a move from old data.
-  → Investigate where compete got +0.28% on a closed day.
+- **Compete leaderboard +0.28% — ROOT CAUSE FOUND & FIXED.**
+  `compete/evaluator.py::_fetch_closing_price()` used yfinance
+  `ticker.history(period="1d")`, which on a holiday SILENTLY returns the
+  previous trading day's candle instead of empty. So it compared today's stale
+  pre-market entry snapshot against the prior-day close = phantom +0.28%.
+  FIX: validate `hist.index[-1].date() == today`; return None (P&L = N/A)
+  when the latest candle isn't today's.
+
+## FIXES APPLIED (this session)
+- `run_pre_market.py`: holiday/weekend now HARD-STOPS (early return) AND sends
+  a "Market Closed" Slack notification instead of running anyway.
+- `compete/evaluator.py`: `_fetch_closing_price()` validates candle date ==
+  today; no more phantom P&L on closed-market days.
 
 ## 2026-06-26 run — confirms OCI was running PRE-FIX code
 

@@ -45,15 +45,30 @@ def main():
         logger.error("config_load_failed", error=str(e))
         sys.exit(1)
     
-    # Safety checks — holiday/weekend is a warning only for pre-market analysis.
-    # Kill switch and API health are hard stops.
+    # Safety checks. On a market holiday/weekend we HARD-STOP: there is no
+    # market data, so simulating trades only pollutes the learning/RL data.
+    # Kill switch and API health are also hard stops.
     safety = SafetyControls()
     ok, issues = safety.run_all_checks_basic()
     if not ok:
         holiday_only = all("holiday or weekend" in i for i in issues)
         if holiday_only:
-            logger.warning("safety_checks_warning_weekend", issues=issues)
-            print(f"Warning (running anyway): {issues}")
+            from datetime import date as _date
+            logger.info("market_closed_skipping_pre_market", issues=issues)
+            print(f"Market closed today — skipping pre-market. {issues}")
+            try:
+                from autotrader.tools.notifications import get_notifier
+                get_notifier(config.notifications).send(
+                    subject=f"Market Closed — {_date.today().isoformat()}",
+                    body=(
+                        f"🔴 NSE is closed today ({_date.today().isoformat()}).\n"
+                        f"Reason: {issues[0] if issues else 'holiday or weekend'}\n"
+                        "Pre-market analysis skipped — no trades will be placed."
+                    ),
+                )
+            except Exception as exc:
+                logger.warning("market_closed_notify_failed", error=str(exc))
+            return
         else:
             logger.error("safety_checks_failed", issues=issues)
             print(f"Safety checks failed: {issues}")
