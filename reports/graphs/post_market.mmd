@@ -1,0 +1,10 @@
+flowchart TD
+    START([__start__]) --> dry_run_pnl
+    dry_run_pnl --> daily_learning
+    daily_learning --> agent_evaluator
+    agent_evaluator --> compete_evaluator
+    compete_evaluator --> long_term_memory
+    agent_evaluator -.->|compete disabled| long_term_memory
+    long_term_memory --> memory_compression
+    memory_compression --> rl_tuning
+    rl_tuning --> END([__end__])

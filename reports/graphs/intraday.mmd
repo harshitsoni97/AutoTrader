@@ -1,0 +1,8 @@
+flowchart TD
+    START([__start__]) --> market_regime
+    market_regime --> monitoring
+    monitoring --> late_trade
+    late_trade --> reentry
+    reentry --> compete_hypothetical_monitor
+    compete_hypothetical_monitor --> END([__end__])
+    reentry -.->|compete disabled| END
