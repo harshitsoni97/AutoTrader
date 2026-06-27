@@ -269,11 +269,15 @@ class Notifier:
         eod = any(r.get("hypothetical_pnl_pct") is not None for r in competitor_results)
 
         # At end-of-day, sort by P&L so winner is on top
-        results = sorted(
-            competitor_results,
-            key=lambda r: r.get("hypothetical_pnl_pct") if r.get("hypothetical_pnl_pct") is not None else float("-inf"),
-            reverse=True,
-        ) if eod else competitor_results
+        def _pnl_key(r):
+            v = r.get("hypothetical_pnl_pct")
+            return v if v is not None else float("-inf")
+        results = sorted(competitor_results, key=_pnl_key, reverse=True) if eod else competitor_results
+
+        # Joint ranking: stacks with identical P&L share the same rank/medal.
+        # (standard competition ranking — tied picks are not split by list order)
+        pnl_values = [_pnl_key(r) for r in results]
+        ranks = [1 + sum(1 for v in pnl_values if v > pnl_values[i]) for i in range(len(results))]
 
         subject = f"{'🏆 Compete EOD Leaderboard' if eod else 'Compete Picks'} [{mode}] — {run_date}"
         lines = []
@@ -289,7 +293,7 @@ class Notifier:
                 f"   Qty: {tp.get('qty', 0)}  |  Risk:Reward: {rr:.1f}R  |  "
                 f"Capital: ₹{tp.get('position_size_inr', 0):,.0f}"
             )
-        medals = ["🥇", "🥈", "🥉"]
+        medals = {1: "🥇", 2: "🥈", 3: "🥉"}
         for i, r in enumerate(results):
             name = r.get("name", "?")
             pick = r.get("pick") or "—"
@@ -303,7 +307,14 @@ class Notifier:
             rationale = r.get("rationale", "")[:120]
             concerns = r.get("concerns", [])
             concern_str = f"\n   ⚠ {'; '.join(concerns[:2])}" if concerns else ""
-            prefix = medals[i] if eod and i < 3 else "•"
+            # Tie-aware medal: same P&L → same medal; mark joint placings with "=".
+            if eod:
+                rank = ranks[i]
+                tied = pnl_values.count(pnl_values[i]) > 1
+                medal = medals.get(rank, f"#{rank}")
+                prefix = f"{medal}=" if tied else medal
+            else:
+                prefix = "•"
             lines.append(
                 f"{prefix} *{name}*{veto}: {pick} (score {score_str}, regime {regime}, P&L {pnl_str})\n"
                 f"   {rationale}{concern_str}"

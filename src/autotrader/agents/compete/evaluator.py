@@ -73,15 +73,22 @@ def compete_evaluator_agent(state: TradingState) -> dict[str, Any]:
             "hypothetical_pnl_pct": pnl_pct,
         })
 
-    # Rank by PnL % (None / errored competitors go last)
-    ranked = sorted(
-        updated,
-        key=lambda r: r.get("hypothetical_pnl_pct") if r.get("hypothetical_pnl_pct") is not None else float("-inf"),
-        reverse=True,
-    )
+    # Rank by PnL % (None / errored competitors go last).
+    # Joint ranking: stacks with identical P&L share the same rank (standard
+    # competition ranking, "1224"). This avoids implying a winner when picks
+    # tie — e.g. three stacks all flat on a quiet day are all rank #1, not
+    # #1/#2/#3 decided by config order.
+    def _pnl_key(r: dict) -> float:
+        v = r.get("hypothetical_pnl_pct")
+        return v if v is not None else float("-inf")
+
+    ranked = sorted(updated, key=_pnl_key, reverse=True)
+    pnl_values = [_pnl_key(r) for r in ranked]
 
     leaderboard = []
-    for rank, r in enumerate(ranked, start=1):
+    for i, r in enumerate(ranked):
+        # Competition rank = 1 + number of stacks strictly better than this one.
+        rank = 1 + sum(1 for v in pnl_values if v > pnl_values[i])
         leaderboard.append({
             "rank": rank,
             "name": r["name"],
