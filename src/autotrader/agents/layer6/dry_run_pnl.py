@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import structlog
 import math
-from datetime import date, timedelta
 from typing import Any
 
 from autotrader.core.messages import audit_entry
@@ -26,43 +25,15 @@ AGENT_NAME = "DryRunPnLAgent"
 
 
 def _eod_price(symbol: str) -> float | None:
-    """Fetch today's closing price for a symbol.
+    """Today's closing price via the shared Upstox price source.
 
-    Strategy:
-    1. LTP (last traded price) — after 15:30 IST this equals the closing price.
-       Works even when historical daily candles haven't been finalized yet.
-    2. Historical daily candle — fallback; returns yesterday's close if today's
-       candle isn't yet settled, so only use when LTP is unavailable.
+    Same helper the compete leaderboard uses, so assumed P&L and the leaderboard
+    always reconcile. require_today=False here: dry-run P&L only runs post-market
+    on actual trading days, and if LTP is briefly unavailable we still want the
+    latest settled close rather than a hard None.
     """
-    try:
-        from autotrader.agents.layer2.technical_structure import _load_instrument_map
-        from autotrader.tools import upstox_data
-        imap = _load_instrument_map()
-        ikey = imap.get(symbol)
-        if not ikey:
-            return None
-
-        # Primary: LTP after market close = today's closing price
-        ltp_data = upstox_data.get_ltp([ikey])
-        if ltp_data and ikey in ltp_data:
-            price = float(ltp_data[ikey])
-            if price > 0:
-                logger.info("eod_price_via_ltp", symbol=symbol, price=price)
-                return price
-
-        # Fallback: most recent settled daily candle
-        today = date.today().isoformat()
-        from_date = (date.today() - timedelta(days=5)).isoformat()
-        rows = upstox_data.get_historical_candles(ikey, "days", 1, from_date, today)
-        if rows:
-            rows.sort(key=lambda r: r.get("timestamp", ""))
-            price = float(rows[-1]["close"])
-            logger.info("eod_price_via_candle", symbol=symbol, price=price,
-                        candle_date=rows[-1].get("timestamp", "")[:10])
-            return price
-    except Exception as exc:
-        logger.warning("eod_price_fetch_failed", symbol=symbol, error=str(exc))
-    return None
+    from autotrader.tools.price_utils import closing_price
+    return closing_price(symbol, require_today=False)
 
 
 def _simulate_pnl(pos: dict, eod: float) -> dict:

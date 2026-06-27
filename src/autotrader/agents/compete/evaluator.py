@@ -22,31 +22,14 @@ AGENT_NAME = "CompeteEvaluator"
 
 
 def _fetch_closing_price(symbol: str) -> float | None:
-    """Fetch TODAY's closing price for symbol via yfinance (.NS suffix for NSE).
+    """Fetch TODAY's closing price for symbol via Upstox (shared price source).
 
-    yfinance's period="1d" silently returns the most recent trading day's candle
-    when the market is closed (holiday/weekend). We must validate that the candle
-    is actually dated today — otherwise we compare a stale entry against the prior
-    day's close and report a phantom P&L (e.g. +0.28% on a market holiday).
+    Uses the same Upstox-backed helper as dry_run_pnl so the leaderboard and the
+    assumed P&L always reconcile. On a holiday/weekend the helper returns None
+    (no phantom P&L from a stale prior-day candle).
     """
-    try:
-        import yfinance as yf
-        from datetime import date as _date
-        ticker = yf.Ticker(f"{symbol}.NS")
-        hist = ticker.history(period="1d")
-        if hist.empty:
-            return None
-        # Validate the candle's date matches today; if not, the market was closed.
-        last_ts = hist.index[-1]
-        candle_date = last_ts.date() if hasattr(last_ts, "date") else None
-        if candle_date is not None and candle_date != _date.today():
-            logger.info("[%s] %s: latest candle is %s, not today — market closed, no P&L",
-                        AGENT_NAME, symbol, candle_date)
-            return None
-        return float(hist["Close"].iloc[-1])
-    except Exception as exc:
-        logger.warning("[%s] Could not fetch closing price for %s: %s", AGENT_NAME, symbol, exc)
-        return None
+    from autotrader.tools.price_utils import closing_price
+    return closing_price(symbol, require_today=True)
 
 
 def _pnl_for_pick(entry_price: float | None, closing_price: float | None) -> float | None:
@@ -68,7 +51,7 @@ def compete_evaluator_agent(state: TradingState) -> dict[str, Any]:
         entry = audit_entry(agent=AGENT_NAME, action="no_results", data={})
         return {"audit_trail": [entry]}
 
-    # Fetch closing prices — cache per symbol to avoid duplicate yfinance calls
+    # Fetch closing prices — cache per symbol to avoid duplicate Upstox calls
     price_cache: dict[str, float | None] = {}
     updated: list[dict] = []
 

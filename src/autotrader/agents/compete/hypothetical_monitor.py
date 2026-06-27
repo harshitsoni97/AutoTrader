@@ -20,27 +20,13 @@ AGENT_NAME = "CompeteHypotheticalMonitor"
 
 
 def _fetch_price(symbol: str) -> float | None:
-    # Upstox LTP is primary (reliable intraday)
-    try:
-        from autotrader.tools import upstox_data
-        instrument_key = f"NSE_EQ|{symbol}"
-        prices = upstox_data.get_ltp([instrument_key])
-        if prices and instrument_key in prices:
-            return prices[instrument_key]
-    except Exception as exc:
-        logger.debug("[%s] Upstox LTP failed for %s: %s", AGENT_NAME, symbol, exc)
+    """Intraday live price via Upstox LTP (shared price source, no yfinance).
 
-    # Fallback to yfinance
-    try:
-        import yfinance as yf
-        t = yf.Ticker(f"{symbol}.NS")
-        hist = t.history(period="1d", interval="1m")
-        if hist.empty:
-            return None
-        return float(hist["Close"].iloc[-1])
-    except Exception as exc:
-        logger.warning("[%s] Price fetch failed for %s: %s", AGENT_NAME, symbol, exc)
-        return None
+    Uses the instrument map to resolve the correct Upstox key rather than the
+    naive NSE_EQ|<symbol> guess, matching dry_run_pnl and the compete evaluator.
+    """
+    from autotrader.tools.price_utils import live_ltp
+    return live_ltp(symbol)
 
 
 def compete_hypothetical_monitor_agent(state: TradingState) -> dict[str, Any]:
