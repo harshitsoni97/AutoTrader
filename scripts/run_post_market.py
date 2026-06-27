@@ -106,6 +106,7 @@ def main():
         "daily_pnl": daily_pnl,
         "regime": result.get("market_regime", "n/a"),
         "trade_outcomes": result.get("trade_outcomes", []),
+        "journal_total": result.get("journal_total", 0),
     })
 
     # Compete leaderboard — which stack made/lost most today

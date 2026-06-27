@@ -22,6 +22,17 @@ _JOURNAL_PATH = os.path.normpath(
 )
 
 
+def count_rows() -> int:
+    """Total trades recorded in the journal so far (0 if none yet)."""
+    try:
+        if not os.path.exists(_JOURNAL_PATH):
+            return 0
+        with open(_JOURNAL_PATH) as f:
+            return sum(1 for line in f if line.strip())
+    except Exception:
+        return 0
+
+
 def append_outcomes(run_date: str, regime: str, dry_run: bool, outcomes: list[dict]) -> int:
     """Append one journal row per trade outcome. Returns rows written."""
     if not outcomes:

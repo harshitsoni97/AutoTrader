@@ -217,6 +217,11 @@ class Notifier:
                     line += f" | entry ₹{entry:.1f} → EOD ₹{eod:.1f}"
                 body += line
 
+        # Passive heartbeat: cumulative trade-journal size (dataset for tuning review)
+        jt = summary.get("journal_total")
+        if jt:
+            body += f"\n\n📒 Trade journal: {jt} trades recorded so far"
+
         return self.send(subject, body)
 
     def notify_pre_market_summary(self, state: dict) -> dict[str, bool]:

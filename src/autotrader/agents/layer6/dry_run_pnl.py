@@ -128,14 +128,19 @@ def dry_run_pnl_agent(state: TradingState) -> dict[str, Any]:
 
     # Append to the trade journal — the dataset for evaluating the adaptive
     # target logic (and future RL tuning of its breakpoints).
+    journal_total = 0
     try:
-        from autotrader.core.trade_journal import append_outcomes
+        from autotrader.core.trade_journal import append_outcomes, count_rows
         append_outcomes(
             run_date=state.get("run_date", ""),
             regime=state.get("market_regime", "unknown"),
             dry_run=dry_run,
             outcomes=outcomes,
         )
+        journal_total = count_rows()
+        # Passive heartbeat: cumulative dataset size for the adaptive-RR review.
+        logger.info("trade_journal_heartbeat", total_trades=journal_total,
+                    added_today=len(outcomes))
     except Exception as exc:
         logger.warning("trade_journal_call_failed", error=str(exc))
 
@@ -148,5 +153,6 @@ def dry_run_pnl_agent(state: TradingState) -> dict[str, Any]:
     return {
         "trade_outcomes": outcomes,
         "daily_pnl": total_assumed_pnl,
+        "journal_total": journal_total,
         "audit_trail": [entry],
     }
