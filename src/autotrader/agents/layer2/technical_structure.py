@@ -379,6 +379,8 @@ def technical_structure_agent(state: TradingState) -> dict[str, Any]:
             "vwap": vwap,
             "current_price": round(current_price, 2),
             "atr": round(atr, 2),
+            "daily_atr": round(upstox_daily_atr, 2),
+            "intraday_atr": round(intra_atr or 0.0, 2),
             "atr_source": "intraday_30m" if intra_atr else data_source,
             "indicators_source": data_source,
             "bb_upper": bb_upper,

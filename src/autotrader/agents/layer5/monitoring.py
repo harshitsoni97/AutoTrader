@@ -17,7 +17,21 @@ logger = structlog.get_logger()
 AGENT_NAME = "MonitoringAgent"
 
 
-def _get_current_price(broker, symbol: str) -> float:
+def _get_current_price(broker, symbol: str, dry_run: bool = False) -> float:
+    """Live price for a position.
+
+    In dry-run the MockBroker returns a static fabricated price that never
+    moves, so targets/stops could never trigger. Use the real Upstox LTP
+    instead so paper trading reacts to the actual market. Live mode uses the
+    real broker quote (the execution venue's own feed).
+    """
+    if dry_run:
+        from autotrader.tools.price_utils import live_ltp
+        price = live_ltp(symbol)
+        if price is not None and price > 0:
+            return price
+        logger.warning("[%s] dry-run LTP unavailable for %s — falling back to broker quote",
+                       AGENT_NAME, symbol)
     quote = broker.get_quote(symbol)
     return quote.get("ltp", 0.0)
 
@@ -55,6 +69,7 @@ def monitoring_agent(state: TradingState) -> dict[str, Any]:
     cfg = load_config()
     broker = get_broker(cfg.broker)
     notifier = get_notifier(cfg.notifications)
+    dry_run = state.get("dry_run", True)
 
     updated_positions: list[dict] = []
     new_orders: list[dict] = []
@@ -68,7 +83,7 @@ def monitoring_agent(state: TradingState) -> dict[str, Any]:
             continue
 
         symbol = pos["symbol"]
-        current_price = _get_current_price(broker, symbol)
+        current_price = _get_current_price(broker, symbol, dry_run)
         entry_price = pos["entry_price"]
         stop = pos["stop"]
         target1 = pos["target1"]

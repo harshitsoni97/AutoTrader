@@ -31,6 +31,52 @@ def _load_strategy_params() -> tuple[float, float | None]:
         return 1.0, None
 
 
+def _adaptive_target_rr(candidate: dict, floor_rr: float = 1.5) -> float:
+    """Pick the runner's reward:risk multiple (T2) dynamically per setup.
+
+    Rationale for the method (algorithmic, not LLM):
+      - The multiple must be deterministic, backtestable, and tunable by the RL
+        agent. An LLM call would be non-reproducible, slow, and unauditable for
+        a single number; LLMs add value on qualitative review, not numeric sizing.
+      - No external "optimal RR" API exists that beats using the signals we
+        already compute. The standard practitioner approach (ATR/Van-Tharp style)
+        is to let trend strength decide how far to let a winner run.
+
+    Inputs (all already on the candidate):
+      - ADX  → trend strength. Strong trend = let it run further (higher RR).
+      - volume multiple → conviction. Strong participation bumps the target.
+      - RSI  → very overbought reduces the runner (mean-reversion risk).
+    Output is clamped to [floor_rr, 3.5] and always > 1.0 so T2 > T1 (=1R).
+    """
+    adx = candidate.get("adx", 20) or 20
+    if adx >= 40:
+        rr = 3.0
+    elif adx >= 30:
+        rr = 2.5
+    elif adx >= 25:
+        rr = 2.0
+    elif adx >= 20:
+        rr = 1.7
+    else:
+        rr = 1.5
+
+    # Volume conviction: strong participation lets the runner stretch.
+    vol_mult = candidate.get("volume_multiple") or candidate.get("rvol") or 0
+    if vol_mult and vol_mult >= 2.5:
+        rr += 0.5
+    elif vol_mult and vol_mult >= 1.8:
+        rr += 0.25
+
+    # Overbought guard: very stretched RSI = pull the runner in (reversion risk).
+    rsi = candidate.get("rsi", 50) or 50
+    if rsi >= 80:
+        rr -= 0.5
+    elif rsi >= 75:
+        rr -= 0.25
+
+    return round(max(floor_rr, min(rr, 3.5)), 2)
+
+
 def _build_plan(
     candidate: dict,
     policy: Any,
@@ -45,7 +91,11 @@ def _build_plan(
         logger.warning("[%s] Skipping %s — current_price is 0 or NaN", AGENT_NAME, symbol)
         return None
 
-    raw_atr = candidate.get("atr", None)
+    # Use DAILY ATR for swing-level intraday stops/targets. The 30-min ATR is the
+    # range of a single bar (~0.5% of price) and produces absurdly tight targets
+    # (e.g. DRREDDY T1 at +0.68% while the stock moved +2.3%). Daily ATR reflects
+    # the move we actually hold for. Fall back to intraday/atr, then a 1.5% proxy.
+    raw_atr = candidate.get("daily_atr") or candidate.get("atr") or 0
     atr = raw_atr if (raw_atr and not math.isnan(raw_atr) and raw_atr > 0) else current_price * 0.015
 
     pattern = candidate.get("pattern", "NONE")
@@ -68,8 +118,12 @@ def _build_plan(
         stop_distance = atr * stop_mult
         stop_price = round(entry_price - stop_distance, 2)
 
-    # Targets: T1 = 1R (book partial profit), T2 = RR-multiple R (let it run)
-    rr_mult = target_rr if target_rr else policy.min_risk_reward
+    # Targets: T1 = 1R (book partial profit), T2 = adaptive R (let the runner run).
+    # The runner multiple is chosen per-setup from trend strength / conviction
+    # (see _adaptive_target_rr). The RL-tuned target_rr is used only as a FLOOR so
+    # the tuner can never collapse T2 onto T1 (the old target_rr_min=1.0 bug).
+    floor_rr = max(1.5, target_rr or 0.0)
+    rr_mult = _adaptive_target_rr(candidate, floor_rr=floor_rr)
     target1 = round(entry_price + stop_distance * 1.0, 2)
     target2 = round(entry_price + stop_distance * rr_mult, 2)
 
@@ -97,6 +151,8 @@ def _build_plan(
         "stop": stop_price,
         "target1": target1,
         "target2": target2,
+        "target2_rr": rr_mult,
+        "atr_used": round(atr, 2),
         "qty": qty,
         "position_size_inr": round(qty * entry_price, 2),
         "risk_inr": round(qty * risk_per_share, 2),
