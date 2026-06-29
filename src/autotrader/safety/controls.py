@@ -1,9 +1,39 @@
 """Safety controls for the AutoTrader system."""
+import os
 import structlog
 from datetime import datetime, date
 from typing import Optional
 
 logger = structlog.get_logger()
+
+# Persistent halt flag — tripped out-of-band by scripts/circuit_breaker.py and
+# honored by every process that constructs SafetyControls. Override path via env.
+HALT_FILE = os.getenv(
+    "AUTOTRADER_HALT_FILE",
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "../../../reports/HALT")),
+)
+
+
+def _halt_file_active() -> bool:
+    return os.path.exists(HALT_FILE)
+
+
+def trip_halt(reason: str) -> str:
+    """Create the halt file with a reason. Returns the path."""
+    os.makedirs(os.path.dirname(HALT_FILE), exist_ok=True)
+    with open(HALT_FILE, "w") as f:
+        f.write(f"{datetime.now().isoformat()}\n{reason}\n")
+    logger.error("halt_tripped", reason=reason, path=HALT_FILE)
+    return HALT_FILE
+
+
+def clear_halt() -> bool:
+    """Remove the halt file (manual reset). Returns True if a file was removed."""
+    if os.path.exists(HALT_FILE):
+        os.remove(HALT_FILE)
+        logger.warning("halt_cleared", path=HALT_FILE)
+        return True
+    return False
 
 # NSE trading holidays 2024-2025 (partial list - key observed holidays)
 NSE_HOLIDAYS = {
@@ -47,11 +77,17 @@ class SafetyControls:
     def __init__(self):
         self.kill_switch = False
         self._strategy_version = "1.0.0"
-    
+
     def check_kill_switch(self) -> bool:
-        """Returns True if system is safe to operate (kill switch NOT active)."""
-        if self.kill_switch:
-            logger.warning("kill_switch_active")
+        """Returns True if system is safe to operate (kill switch NOT active).
+
+        Honors both the in-memory flag and a persistent halt file, so an
+        out-of-band circuit breaker (scripts/circuit_breaker.py) can stop all
+        trading regardless of what the agents decide. The file is the source of
+        truth across processes.
+        """
+        if self.kill_switch or _halt_file_active():
+            logger.warning("kill_switch_active", halt_file=_halt_file_active())
             return False
         return True
     
