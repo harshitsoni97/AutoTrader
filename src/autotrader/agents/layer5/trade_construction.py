@@ -159,6 +159,7 @@ def _build_plan(
         "reward_inr": round(qty * (target1 - entry_price), 2),
         "rr": round(rr, 2),
         "pattern": pattern,
+        "sector": candidate.get("sector"),
         "score": candidate.get("score", 0),
         "catalyst_reason": candidate.get("catalyst_reason", ""),
         "kelly_fraction": kelly_fraction,
@@ -193,6 +194,37 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
 
     if not trade_plans:
         entry = audit_entry(agent=AGENT_NAME, action="no_valid_price", data={"scored": len(scored)})
+        return {"trade_plan": {}, "trade_plans": [], "audit_trail": [entry]}
+
+    # Portfolio heat: cap concentration so the book isn't 3 correlated names in
+    # one sector (e.g. 2026-06-25's all-pharma picks). Keep plans greedily by
+    # score while no sector exceeds max_sector_exposure_pct of capital. Each plan
+    # is charged its worst-case allocation (max_capital_per_trade_pct); existing
+    # open positions pre-charge their sector.
+    heat_dropped: list[str] = []
+    if getattr(policy, "max_sector_exposure_pct", 0):
+        sector_cap_pct = policy.max_sector_exposure_pct
+        per_trade_pct = policy.max_capital_per_trade_pct
+        cap = policy.total_capital
+        sector_used_pct: dict[str, float] = {}
+        for op in current_positions:
+            sec = op.get("sector") or "UNKNOWN"
+            sector_used_pct[sec] = sector_used_pct.get(sec, 0.0) + (op.get("position_size_inr", 0) / cap * 100 if cap else 0)
+        kept: list[dict] = []
+        for p in trade_plans:
+            sec = p.get("sector") or "UNKNOWN"
+            if sector_used_pct.get(sec, 0.0) + per_trade_pct > sector_cap_pct + 1e-6:
+                heat_dropped.append(p["symbol"])
+                logger.info("[%s] Portfolio heat: dropping %s — sector '%s' would exceed %.0f%%",
+                            AGENT_NAME, p["symbol"], sec, sector_cap_pct)
+                continue
+            sector_used_pct[sec] = sector_used_pct.get(sec, 0.0) + per_trade_pct
+            kept.append(p)
+        trade_plans = kept
+
+    if not trade_plans:
+        entry = audit_entry(agent=AGENT_NAME, action="all_dropped_portfolio_heat",
+                            data={"dropped": heat_dropped})
         return {"trade_plan": {}, "trade_plans": [], "audit_trail": [entry]}
 
     # Portfolio-level allocation: distribute total_capital across plans weighted by score.
