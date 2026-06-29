@@ -11,6 +11,7 @@ from autotrader.tools.nse_tools import get_options_chain
 from autotrader.tools import upstox_data
 
 logger = structlog.get_logger()
+from autotrader.core.snapshot import stamp as _snapshot_stamp
 
 AGENT_NAME = "OptionsIntelligenceAgent"
 
@@ -104,4 +105,5 @@ def options_intelligence_agent(state: TradingState) -> dict[str, Any]:
         "options_signal": signal,
         "messages": [msg],
         "audit_trail": [entry],
+        "data_fetch_log": _snapshot_stamp("options_intelligence"),
     }

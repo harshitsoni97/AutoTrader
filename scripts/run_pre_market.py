@@ -103,6 +103,17 @@ def main():
         get_notifier(config.notifications).notify_error("pre_market", str(e))
         raise
 
+    # Snapshot coherence: warn if data sources drifted too far apart in time.
+    try:
+        from autotrader.core.snapshot import check_drift
+        drift_s, drift_warnings = check_drift(result.get("data_fetch_log", []))
+        if drift_warnings:
+            logger.warning("data_snapshot_drift", drift_seconds=drift_s, warnings=drift_warnings)
+        else:
+            logger.info("data_snapshot_coherent", drift_seconds=drift_s)
+    except Exception as exc:
+        logger.warning("snapshot_drift_check_failed", error=str(exc))
+
     # Pre-flight: warn if any scored/traded symbol is missing from the Upstox
     # instrument map. A missing symbol silently yields ₹0 P&L (no price lookup),
     # so surface it loudly on Slack instead of letting it pass unnoticed.

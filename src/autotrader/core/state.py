@@ -69,6 +69,11 @@ class TradingState(TypedDict):
     audit_trail: Annotated[list[dict], operator.add]
     errors: Annotated[list[str], operator.add]
 
+    # Data-snapshot coherence: one nominal snapshot time per run, plus each
+    # source's actual fetch time so cross-source drift can be detected/logged.
+    snapshot_ts: str
+    data_fetch_log: Annotated[list[dict], operator.add]  # [{source, ts}]
+
     # Dry-run mode flag (propagated from config)
     dry_run: bool
 
@@ -88,9 +93,12 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
     sv = cfg.strategy_version
     today = date.today().isoformat()
     dry_run = cfg.trading_policy.dry_run
+    from datetime import datetime
     return TradingState(
         run_date=today,
         session_type=session_type,
+        snapshot_ts=datetime.now().isoformat(timespec="seconds"),
+        data_fetch_log=[],
         strategy_version=sv.strategy_version,
         memory_version=sv.memory_version,
         config_version=sv.config_version,

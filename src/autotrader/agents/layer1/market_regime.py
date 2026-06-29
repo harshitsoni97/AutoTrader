@@ -21,6 +21,7 @@ from autotrader.tools.nse_tools import get_fii_dii_data, get_fii_derivatives
 from autotrader.tools import upstox_data
 
 logger = structlog.get_logger()
+from autotrader.core.snapshot import stamp as _snapshot_stamp
 
 AGENT_NAME = "MarketRegimeAgent"
 
@@ -295,4 +296,5 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
         "global_change_pct": round(global_pct, 3),
         "messages": [msg],
         "audit_trail": [entry],
+        "data_fetch_log": _snapshot_stamp("market_regime"),
     }
