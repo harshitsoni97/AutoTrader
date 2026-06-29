@@ -36,9 +36,17 @@ def _eod_price(symbol: str) -> float | None:
     return closing_price(symbol, require_today=False)
 
 
-def _simulate_pnl(pos: dict, eod: float) -> dict:
-    """Simulate outcome for one position given EOD price."""
-    entry = pos.get("assumed_entry") or pos.get("entry_price", 0)
+def _simulate_pnl(pos: dict, eod: float, half_spread_bps: float = 0.0,
+                  impact_bps_per_lakh: float = 0.0) -> dict:
+    """Simulate outcome for one position given EOD price.
+
+    Cost basis is the actual (slipped) entry fill. Each exit also incurs adverse
+    sell-side slippage, so the reported P&L is a realistic round-trip, not a
+    frictionless ideal.
+    """
+    from autotrader.core.slippage import slipped_fill
+    # Use the real fill as basis; assumed_entry (plan price) is only a fallback.
+    entry = pos.get("entry_price") or pos.get("assumed_entry") or 0
     stop = pos.get("stop", 0)
     target1 = pos.get("target1", 0)
     target2 = pos.get("target2", 0)
@@ -47,18 +55,26 @@ def _simulate_pnl(pos: dict, eod: float) -> dict:
     if not entry or not qty:
         return {"pnl": 0.0, "scenario": "no_data"}
 
+    def _sell(price: float, q: int) -> float:
+        fill, _ = slipped_fill(price, q, "SELL", half_spread_bps, impact_bps_per_lakh)
+        return fill
+
     if eod >= target2:
-        pnl = qty * (target2 - entry)
+        exit_px = _sell(target2, qty)
+        pnl = qty * (exit_px - entry)
         scenario = "target2_hit"
     elif eod >= target1:
         half = max(1, qty // 2)
-        pnl = half * (target1 - entry) + (qty - half) * (eod - entry)
+        rest = qty - half
+        pnl = half * (_sell(target1, half) - entry) + rest * (_sell(eod, rest) - entry)
         scenario = "target1_hit_partial"
     elif eod <= stop:
-        pnl = qty * (stop - entry)
+        exit_px = _sell(stop, qty)
+        pnl = qty * (exit_px - entry)
         scenario = "stopped_out"
     else:
-        pnl = qty * (eod - entry)
+        exit_px = _sell(eod, qty)
+        pnl = qty * (exit_px - entry)
         scenario = "open_at_close"
 
     return {"pnl": round(pnl, 2), "scenario": scenario, "eod_price": eod}
@@ -75,6 +91,14 @@ def dry_run_pnl_agent(state: TradingState) -> dict[str, Any]:
 
     if not positions:
         return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="no_positions", data={})]}
+
+    try:
+        from autotrader.core.config import load_config
+        _tp = load_config().trading_policy
+        half_spread_bps = getattr(_tp, "dry_run_slippage_bps", 4.0)
+        impact_bps_per_lakh = getattr(_tp, "dry_run_impact_bps_per_lakh", 1.5)
+    except Exception:
+        half_spread_bps, impact_bps_per_lakh = 4.0, 1.5
 
     outcomes = []
     total_assumed_pnl = 0.0
@@ -96,7 +120,7 @@ def dry_run_pnl_agent(state: TradingState) -> dict[str, Any]:
             })
             continue
 
-        result = _simulate_pnl(pos, eod)
+        result = _simulate_pnl(pos, eod, half_spread_bps, impact_bps_per_lakh)
         total_assumed_pnl += result["pnl"]
 
         outcomes.append({

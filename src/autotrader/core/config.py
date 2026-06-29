@@ -33,6 +33,11 @@ class TradingPolicy(BaseModel):
     total_capital: float = 1_000_000.0
     blocked_regimes: List[str] = Field(default_factory=list)
     dry_run: bool = True  # When True: no real orders sent; post-market compares assumed vs actual
+    # Dry-run slippage model — makes paper P&L honest instead of assuming a
+    # perfect fill at the plan price. Applied adversely (buys fill higher, sells
+    # lower). half_spread = fixed cost; impact scales with order notional.
+    dry_run_slippage_bps: float = 4.0       # half bid-ask spread, basis points
+    dry_run_impact_bps_per_lakh: float = 1.5  # extra bps per ₹1L of order notional
 
 
 class MemoryBackendConfig(BaseModel):

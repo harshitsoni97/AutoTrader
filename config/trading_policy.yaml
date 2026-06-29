@@ -21,6 +21,9 @@ trading_policy:
   allow_reentry_same_stock: false
   allow_overnight_positions: false
   total_capital: 100000
+  # Dry-run slippage model (makes paper P&L honest — adverse fills, not perfect)
+  dry_run_slippage_bps: 4.0          # half bid-ask spread, basis points
+  dry_run_impact_bps_per_lakh: 1.5   # extra bps per ₹1L of order notional
   blocked_regimes:
     - "high_volatility_bear"
     - "risk_off_extreme"

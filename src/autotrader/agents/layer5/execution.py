@@ -26,16 +26,20 @@ def _idempotency_key(symbol: str, run_date: str, entry: float, qty: int) -> str:
     return "AT-" + hashlib.sha1(raw.encode()).hexdigest()[:10]
 
 
-def _dry_run_fill(trade_plan: dict, tag: str) -> dict:
+def _dry_run_fill(trade_plan: dict, tag: str, half_spread_bps: float, impact_bps_per_lakh: float) -> dict:
+    from autotrader.core.slippage import slipped_fill
+    entry = trade_plan["entry"]
+    qty = trade_plan["qty"]
+    fill_price, slip = slipped_fill(entry, qty, "BUY", half_spread_bps, impact_bps_per_lakh)
     return {
         "order_id": f"DRY-{tag}",
         "symbol": trade_plan["symbol"],
-        "qty": trade_plan["qty"],
+        "qty": qty,
         "side": "BUY",
         "order_type": "DRY_RUN",
-        "requested_price": trade_plan["entry"],
-        "fill_price": trade_plan["entry"],
-        "slippage": 0.0,
+        "requested_price": entry,
+        "fill_price": fill_price,      # adverse fill, not the plan price
+        "slippage": slip,
         "status": "DRY_RUN_ASSUMED",
         "tag": tag,
     }
@@ -47,6 +51,8 @@ def _execute_single(
     is_dry_run: bool,
     broker: Any,
     existing_tags: set[str],
+    half_spread_bps: float = 0.0,
+    impact_bps_per_lakh: float = 0.0,
 ) -> tuple[dict | None, dict | None, str | None]:
     """Execute one plan. Returns (order, position, skip_reason)."""
     symbol = trade_plan["symbol"]
@@ -59,8 +65,9 @@ def _execute_single(
         return None, None, f"duplicate:{tag}"
 
     if is_dry_run:
-        order = _dry_run_fill(trade_plan, tag)
-        logger.info("[%s] DRY RUN — assumed fill: %s x%d @ %.2f", AGENT_NAME, symbol, qty, entry_price)
+        order = _dry_run_fill(trade_plan, tag, half_spread_bps, impact_bps_per_lakh)
+        logger.info("[%s] DRY RUN — fill %s x%d @ %.2f (plan %.2f, slip %.2f)",
+                    AGENT_NAME, symbol, qty, order["fill_price"], entry_price, order["slippage"])
     else:
         order = broker.place_order(
             symbol=symbol, qty=qty, side="BUY",
@@ -113,6 +120,8 @@ def execution_agent(state: TradingState) -> dict[str, Any]:
     cfg = load_config()
     broker = get_broker(cfg.broker) if not is_dry_run else None
     notifier = get_notifier(cfg.notifications)
+    half_spread_bps = getattr(cfg.trading_policy, "dry_run_slippage_bps", 4.0)
+    impact_bps_per_lakh = getattr(cfg.trading_policy, "dry_run_impact_bps_per_lakh", 1.5)
 
     all_orders: list[dict] = []
     all_positions: list[dict] = []
@@ -121,7 +130,10 @@ def execution_agent(state: TradingState) -> dict[str, Any]:
     trades_placed = 0
 
     for plan in trade_plans:
-        order, position, skip_reason = _execute_single(plan, run_date, is_dry_run, broker, existing_tags)
+        order, position, skip_reason = _execute_single(
+            plan, run_date, is_dry_run, broker, existing_tags,
+            half_spread_bps, impact_bps_per_lakh,
+        )
         if skip_reason:
             audit_entries.append(audit_entry(
                 agent=AGENT_NAME, action="duplicate_suppressed",
