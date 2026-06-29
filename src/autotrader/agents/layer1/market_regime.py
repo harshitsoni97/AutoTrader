@@ -221,13 +221,33 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
 
     regime, confidence = _determine_regime(nifty_pct, vix, fii_net, global_pct, gift_gap_pct)
 
-    # Optional LLM synthesis — narrative enrichment + confidence refinement
+    # Optional LLM synthesis — narrative enrichment + confidence refinement.
+    # Intraday, the loop runs every few minutes; calling the analysis LLM each
+    # cycle adds 5-15s latency for no benefit when nothing changed. So intraday
+    # we ONLY enrich when the deterministic signal shifts materially — the regime
+    # label flips, or VIX moves > 1 point vs the last cycle. Pre-market/post
+    # always enrich (runs once).
     llm_enrichment: dict = {}
     cfg = load_config()
-    if cfg.llm.enable_regime_llm:
+    session_type = state.get("session_type", "pre_market")
+    is_intraday = session_type == "intraday"
+
+    prev_regime = state.get("market_regime")
+    prev_vix = state.get("india_vix")
+    material_shift = (
+        prev_regime is None
+        or regime != prev_regime
+        or (prev_vix is not None and abs(vix - prev_vix) > 1.0)
+    )
+    should_enrich = cfg.llm.enable_regime_llm and (not is_intraday or material_shift)
+
+    if should_enrich:
         regime, confidence, llm_enrichment = _llm_enrich_regime(
             regime, confidence, nifty_pct, vix, fii_net, global_pct, get_analysis_llm(cfg.llm)
         )
+    elif is_intraday:
+        logger.info("[%s] Intraday: deterministic regime unchanged (%s) — skipping LLM enrich",
+                    AGENT_NAME, regime)
 
     msg = create_message(
         source=AGENT_NAME,
