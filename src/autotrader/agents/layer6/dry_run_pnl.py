@@ -50,16 +50,23 @@ def _day_ohlc(symbol: str) -> dict | None:
         if not ikey:
             return None
         today = date.today().isoformat()
-        frm = (date.today() - timedelta(days=5)).isoformat()
-        rows = upstox_data.get_historical_candles(ikey, "days", 1, frm, today)
-        if not rows:
+        frm = (date.today() - timedelta(days=4)).isoformat()
+        to = (date.today() + timedelta(days=1)).isoformat()
+        # Aggregate TODAY's 30-min candles. The daily ("days") candle for the
+        # current session isn't published intraday/just-after-close — it returns
+        # the last settled day, so using it silently scores against stale data.
+        rows = upstox_data.get_historical_candles(ikey, "minutes", 30, frm, to)
+        todays = [r for r in (rows or []) if str(r.get("timestamp", "")).startswith(today)]
+        if not todays:
+            logger.warning("no_intraday_candles_today", symbol=symbol)
             return None
-        rows.sort(key=lambda r: r.get("timestamp", ""))
-        last = rows[-1]
+        todays.sort(key=lambda r: r.get("timestamp", ""))
         return {
-            "open": float(last["open"]), "high": float(last["high"]),
-            "low": float(last["low"]), "close": float(last["close"]),
-            "date": str(last.get("timestamp", ""))[:10],
+            "open": float(todays[0]["open"]),
+            "high": max(float(r["high"]) for r in todays),
+            "low": min(float(r["low"]) for r in todays),
+            "close": float(todays[-1]["close"]),
+            "date": today,
         }
     except Exception as exc:
         logger.warning("day_ohlc_failed", symbol=symbol, error=str(exc))

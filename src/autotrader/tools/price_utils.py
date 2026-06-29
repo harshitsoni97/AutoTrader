@@ -61,10 +61,25 @@ def closing_price(symbol: str, require_today: bool = True) -> float | None:
         logger.info("closing_price_via_ltp", symbol=symbol, price=ltp)
         return ltp
 
-    # Fallback: most recent settled daily candle (validated against today)
+    from autotrader.tools import upstox_data
+    today = date.today().isoformat()
+
+    # Fallback 1: TODAY's last 30-min intraday candle close. The daily candle for
+    # the current session isn't published just after close (it returns the prior
+    # settled day), so the intraday candle is the reliable same-day source.
     try:
-        from autotrader.tools import upstox_data
-        today = date.today().isoformat()
+        frm = (date.today() - timedelta(days=4)).isoformat()
+        to = (date.today() + timedelta(days=1)).isoformat()
+        mins = upstox_data.get_historical_candles(ikey, "minutes", 30, frm, to)
+        todays = [r for r in (mins or []) if str(r.get("timestamp", "")).startswith(today)]
+        if todays:
+            todays.sort(key=lambda r: r.get("timestamp", ""))
+            return float(todays[-1]["close"])
+    except Exception as exc:
+        logger.warning("closing_price_intraday_failed", symbol=symbol, error=str(exc))
+
+    # Fallback 2: most recent settled daily candle (validated against today).
+    try:
         from_date = (date.today() - timedelta(days=5)).isoformat()
         rows = upstox_data.get_historical_candles(ikey, "days", 1, from_date, today)
         if rows:
