@@ -202,19 +202,44 @@ class Notifier:
             f"{pnl_emoji} {pnl_label}: ₹{pnl:,.0f}"
         )
 
-        # Append per-trade breakdown when available
+        # Append per-trade breakdown when available. Show the exit that actually
+        # determined the P&L per scenario — not the EOD close, which is
+        # misleading for intraday stop-outs (e.g. a stock stopped on the open dip
+        # but closed higher).
         outcomes = summary.get("trade_outcomes", [])
         if outcomes:
             body += "\n\n*Trade outcomes:*"
             for o in outcomes:
                 sym = o.get("symbol", "?")
-                scenario = o.get("scenario", "").replace("_", " ")
+                sc = o.get("scenario", "")
+                scenario = sc.replace("_", " ")
                 o_pnl = o.get("pnl", 0)
-                eod = o.get("eod_price")
                 entry = o.get("entry")
+                fill = o.get("fill_price")
+                eod = o.get("eod_price")
+                stop = o.get("stop")
+                t1 = o.get("target1")
+                t2 = o.get("target2")
+                low = o.get("day_low")
                 line = f"\n• {sym}: ₹{o_pnl:+,.0f} ({scenario})"
-                if entry and eod:
-                    line += f" | entry ₹{entry:.1f} → EOD ₹{eod:.1f}"
+                if sc == "not_filled":
+                    detail = f"limit ₹{entry:.1f} never reached"
+                    if low:
+                        detail += f" (day low ₹{low:.1f})"
+                elif sc == "stopped_out" and fill and stop:
+                    detail = f"fill ₹{fill:.1f} → stop ₹{stop:.1f}"
+                elif sc == "target2_hit" and fill and t2:
+                    detail = f"fill ₹{fill:.1f} → T2 ₹{t2:.1f}"
+                elif sc == "target1_hit_partial" and fill and t1:
+                    detail = f"fill ₹{fill:.1f} → T1 ₹{t1:.1f}, rest @ close ₹{eod:.1f}" if eod else f"fill ₹{fill:.1f} → T1 ₹{t1:.1f}"
+                elif fill and eod:
+                    detail = f"fill ₹{fill:.1f} → close ₹{eod:.1f}"
+                elif entry and eod:
+                    detail = f"entry ₹{entry:.1f} → close ₹{eod:.1f}"
+                else:
+                    detail = ""
+                if detail:
+                    line += f" | {detail}"
                 body += line
 
         # Passive heartbeat: cumulative trade-journal size (dataset for tuning review)
