@@ -110,6 +110,33 @@ def compete_evaluator_agent(state: TradingState) -> dict[str, Any]:
         )
     logger.info("\n".join(lines))
 
+    # Pick attribution — record the deterministic top pick vs the LLM picks and
+    # their day returns, so we can measure whether the LLM override adds value.
+    try:
+        from autotrader.core.pick_attribution import append as _attr_append
+        scored = state.get("scored_opportunities", [])
+        det = None
+        if scored:
+            d0 = scored[0]
+            d_entry = d0.get("current_price")
+            d_close = _fetch_closing_price(d0["symbol"]) if d0.get("symbol") else None
+            d_ret = round((d_close - d_entry) / d_entry * 100, 3) if (d_entry and d_close) else None
+            det = {"symbol": d0.get("symbol"), "return_pct": d_ret}
+        llm_picks = [
+            {"stack": r.get("name"), "symbol": r.get("pick"),
+             "return_pct": r.get("hypothetical_pnl_pct")}
+            for r in ranked if r.get("pick")
+        ]
+        _attr_append(
+            run_date=state.get("run_date", ""),
+            regime=state.get("market_regime", "unknown"),
+            confidence=state.get("market_confidence", 0.0),
+            deterministic=det,
+            llm_picks=llm_picks,
+        )
+    except Exception as exc:
+        logger.warning("pick_attribution_call_failed", error=str(exc))
+
     msg = create_message(
         source=AGENT_NAME,
         target="DailyLearningAgent",

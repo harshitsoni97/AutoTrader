@@ -4,3 +4,4 @@
 reports/
 .claude/worktrees/
 reports/trade_journal.jsonl
+reports/pick_attribution.jsonl
