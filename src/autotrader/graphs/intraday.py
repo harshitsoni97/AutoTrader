@@ -8,6 +8,7 @@ from autotrader.agents.layer1.market_regime import market_regime_agent
 from autotrader.agents.layer5.monitoring import monitoring_agent
 from autotrader.agents.layer5.reentry import intra_reentry_agent
 from autotrader.agents.layer5.late_trade import late_trade_agent
+from autotrader.agents.layer5.open_reconcile import open_reconcile_agent
 
 logger = structlog.get_logger()
 
@@ -19,6 +20,8 @@ def build_intraday_graph():
 
     # Refresh regime every cycle (Nifty moves intraday)
     graph.add_node("market_regime", market_regime_agent)
+    # Validate pre-market picks against the actual open; cancel + redeploy
+    graph.add_node("open_reconcile", open_reconcile_agent)
     # Monitor / manage existing positions
     graph.add_node("monitoring", monitoring_agent)
     # If regime flipped to favorable and no trades placed yet, fire a late trade
@@ -27,7 +30,8 @@ def build_intraday_graph():
     graph.add_node("reentry", intra_reentry_agent)
 
     graph.set_entry_point("market_regime")
-    graph.add_edge("market_regime", "monitoring")
+    graph.add_edge("market_regime", "open_reconcile")
+    graph.add_edge("open_reconcile", "monitoring")
     graph.add_edge("monitoring", "late_trade")
     graph.add_edge("late_trade", "reentry")
 

@@ -38,6 +38,9 @@ class TradingPolicy(BaseModel):
     # lower). half_spread = fixed cost; impact scales with order notional.
     dry_run_slippage_bps: float = 4.0       # half bid-ask spread, basis points
     dry_run_impact_bps_per_lakh: float = 1.5  # extra bps per ₹1L of order notional
+    # Open reconciliation — validate pre-market picks against the actual open.
+    open_reconcile_enabled: bool = True
+    open_reconcile_max_gap_pct: float = 0.75  # cancel if open gapped > this % above entry
 
 
 class MemoryBackendConfig(BaseModel):

@@ -24,6 +24,9 @@ trading_policy:
   # Dry-run slippage model (makes paper P&L honest — adverse fills, not perfect)
   dry_run_slippage_bps: 4.0          # half bid-ask spread, basis points
   dry_run_impact_bps_per_lakh: 1.5   # extra bps per ₹1L of order notional
+  # Open reconciliation — validate pre-market picks against the actual open
+  open_reconcile_enabled: true
+  open_reconcile_max_gap_pct: 0.75   # cancel if open gapped > this % above entry
   blocked_regimes:
     - "high_volatility_bear"
     - "risk_off_extreme"
