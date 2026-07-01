@@ -47,8 +47,9 @@ def _open_price(symbol: str) -> float | None:
 
 def _good_enough(cand: dict, policy: Any, confidence: float) -> tuple[bool, str]:
     """Validate a redeploy candidate. Returns (ok, reason_if_not)."""
-    if confidence < policy.minimum_confidence:
-        return False, f"regime confidence {confidence:.2f} < {policy.minimum_confidence}"
+    min_trade = getattr(policy, "confidence_min_trade", policy.minimum_confidence)
+    if confidence < min_trade:
+        return False, f"regime confidence {confidence:.2f} < {min_trade}"
     score = cand.get("score", 0)
     if score < policy.minimum_score:
         return False, f"score {score:.1f} < {policy.minimum_score}"

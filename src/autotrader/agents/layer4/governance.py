@@ -70,10 +70,12 @@ def governance_agent(state: TradingState) -> dict[str, Any]:
     if regime in policy.blocked_regimes:
         return reject(f"Market regime '{regime}' is blocked by policy")
 
-    # 8. Confidence threshold
+    # 8. Confidence floor — below this, no trade. Between the floor and the
+    #    full-size level we still trade, but at reduced size (size_mult below).
     confidence = state.get("market_confidence", 0.0)
-    if confidence < policy.minimum_confidence:
-        return reject(f"Market confidence too low ({confidence:.2f} < {policy.minimum_confidence})")
+    min_trade = getattr(policy, "confidence_min_trade", policy.minimum_confidence)
+    if confidence < min_trade:
+        return reject(f"Market confidence too low ({confidence:.2f} < {min_trade})")
 
     # 9. No-reentry check: remove already-held symbols from the eligible list
     if not policy.allow_reentry_same_stock:
@@ -84,7 +86,11 @@ def governance_agent(state: TradingState) -> dict[str, Any]:
         if not scored:
             return reject("No eligible symbols after filtering already-held positions")
 
-    reason = f"All governance checks passed — {len(scored)} eligible opportunity(s)"
+    from autotrader.core.sizing import confidence_size_mult
+    size_mult = confidence_size_mult(confidence, policy)
+
+    reason = (f"All governance checks passed — {len(scored)} eligible opportunity(s); "
+              f"size {size_mult:.0%} @ confidence {confidence:.2f}")
     msg = create_message(
         source=AGENT_NAME, target="RiskAgent",
         payload={"approved": True, "reason": reason, "top_symbol": scored[0]["symbol"] if scored else ""},
@@ -97,12 +103,14 @@ def governance_agent(state: TradingState) -> dict[str, Any]:
         "consecutive_losses": consecutive_losses,
         "regime": regime,
         "confidence": confidence,
+        "size_mult": size_mult,
     })
     logger.info("[%s] APPROVED: %s", AGENT_NAME, reason)
 
     return {
         "governance_approved": True,
         "governance_reason": reason,
+        "confidence_size_mult": size_mult,
         "messages": [msg],
         "audit_trail": [entry],
     }

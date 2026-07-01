@@ -41,6 +41,11 @@ class TradingPolicy(BaseModel):
     # Open reconciliation — validate pre-market picks against the actual open.
     open_reconcile_enabled: bool = True
     open_reconcile_max_gap_pct: float = 0.75  # cancel if open gapped > this % above entry
+    # Confidence-scaled sizing: below min_trade → no trade; ramp to full size at
+    # full_size. Replaces the hard binary confidence cliff.
+    confidence_min_trade: float = 0.65        # hard floor — below this, do not trade
+    confidence_full_size: float = 0.75        # at/above this, full size
+    confidence_floor_size_mult: float = 0.4   # size multiplier at confidence_min_trade
 
 
 class MemoryBackendConfig(BaseModel):

@@ -49,10 +49,11 @@ def late_trade_agent(state: TradingState) -> dict[str, Any]:
         return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="regime_still_blocked",
                                             data={"regime": regime})]}
 
-    if confidence < policy.minimum_confidence:
-        logger.info("[%s] Confidence too low (%.2f < %.2f) — no late trade", AGENT_NAME, confidence, policy.minimum_confidence)
+    min_trade = getattr(policy, "confidence_min_trade", policy.minimum_confidence)
+    if confidence < min_trade:
+        logger.info("[%s] Confidence too low (%.2f < %.2f) — no late trade", AGENT_NAME, confidence, min_trade)
         return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="confidence_too_low",
-                                            data={"confidence": confidence, "threshold": policy.minimum_confidence})]}
+                                            data={"confidence": confidence, "threshold": min_trade})]}
 
     # Regime is now tradeable — execute top opportunity via trade_construction + execution
     logger.info("[%s] Regime flipped to %s (%.0f%%) — triggering late trade", AGENT_NAME, regime, confidence * 100)

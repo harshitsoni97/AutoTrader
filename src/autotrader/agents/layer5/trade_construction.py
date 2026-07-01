@@ -229,12 +229,22 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
 
     # Portfolio-level allocation: distribute total_capital across plans weighted by score.
     # Each plan's share = (score / sum_scores) × total_capital, capped at max_capital_per_trade_pct.
+    # The whole book is then scaled by the confidence-size multiplier so
+    # moderate-confidence days deploy proportionally less capital.
+    from autotrader.core.sizing import confidence_size_mult
+    confidence = state.get("market_confidence", 0.0)
+    size_mult = state.get("confidence_size_mult")
+    if size_mult is None:
+        size_mult = confidence_size_mult(confidence, policy)
+    size_mult = size_mult if size_mult and size_mult > 0 else 1.0
+
     total_capital = policy.total_capital
     max_per_trade = total_capital * policy.max_capital_per_trade_pct / 100
     total_score = sum(p["score"] for p in trade_plans) or 1.0
     for p in trade_plans:
         weight = p["score"] / total_score
-        allocated = min(weight * total_capital, max_per_trade)
+        allocated = min(weight * total_capital, max_per_trade) * size_mult
+        p["confidence_size_mult"] = size_mult
         qty = max(1, int(allocated / p["entry"]))
         p["qty"] = qty
         p["position_size_inr"] = round(qty * p["entry"], 2)
