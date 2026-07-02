@@ -29,6 +29,8 @@ from autotrader.core.tracing import setup_tracing
 from autotrader.safety.controls import SafetyControls
 from autotrader.reports.generators import generate_daily_trade_report, save_report
 
+from autotrader.core.logging_setup import configure_logging
+configure_logging()
 logger = structlog.get_logger()
 
 

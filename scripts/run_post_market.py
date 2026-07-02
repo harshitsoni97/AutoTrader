@@ -31,6 +31,8 @@ from autotrader.reports.generators import (
     save_report,
 )
 
+from autotrader.core.logging_setup import configure_logging
+configure_logging()
 logger = structlog.get_logger()
 
 

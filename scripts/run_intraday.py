@@ -28,6 +28,8 @@ from autotrader.core.tracing import setup_tracing
 from autotrader.core.state import create_initial_state
 from autotrader.safety.controls import SafetyControls
 
+from autotrader.core.logging_setup import configure_logging
+configure_logging()
 logger = structlog.get_logger()
 
 # NSE market hours IST: 09:15 - 15:30
