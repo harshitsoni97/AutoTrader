@@ -153,6 +153,7 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
 
         scored.append({
             "symbol": symbol,
+            "sector": candidate.get("sector"),
             "score": composite,
             "composite_score": composite,  # alias for test compatibility
             "component_scores": {

@@ -95,6 +95,18 @@ def relative_strength_agent(state: TradingState) -> dict[str, Any]:
 
     all_symbols = list(catalyst_symbols | sector_symbols)[:25]
 
+    # Reverse map symbol → sector from the watchlist (the authoritative source
+    # for these candidates) so portfolio heat downstream can group correlated
+    # names. Also fold in the universe's sectors as a secondary source.
+    symbol_to_sector: dict[str, str] = {}
+    for sec, syms in SECTOR_WATCHLIST.items():
+        for s in syms:
+            symbol_to_sector.setdefault(s, sec)
+    for u in state.get("universe", []):
+        sec = u.get("sector")
+        if u.get("symbol") and sec and sec != "Unknown":
+            symbol_to_sector.setdefault(u["symbol"], sec)
+
     candidates: list[dict] = []
     for symbol in all_symbols:
         rows = _get_rs_rows(symbol)
@@ -109,6 +121,7 @@ def relative_strength_agent(state: TradingState) -> dict[str, Any]:
 
         candidates.append({
             "symbol": symbol,
+            "sector": symbol_to_sector.get(symbol),
             "ret_1d_pct": round(ret_1d, 3),
             "ret_5d_pct": round(ret_5d, 3),
             "relative_strength": round(rs_vs_nifty, 1),
