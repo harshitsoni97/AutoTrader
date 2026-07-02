@@ -184,47 +184,61 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
     # How many slots are open?
     current_positions = [p for p in state.get("positions", []) if p.get("status") == "OPEN"]
     slots = max(0, policy.max_concurrent_positions - len(current_positions))
-    n_plans = min(len(scored), slots)
 
-    trade_plans: list[dict] = []
-    for candidate in scored[:n_plans]:
+    # Resolve each symbol's sector from the universe (candidates lose the field
+    # in the pipeline), so portfolio heat can actually group correlated names.
+    universe = state.get("universe", [])
+    sector_by_symbol = {
+        u.get("symbol"): u.get("sector")
+        for u in universe
+        if u.get("symbol") and u.get("sector") and u.get("sector") != "Unknown"
+    }
+
+    # Build plans from a WIDER pool than `slots` so that when portfolio heat drops
+    # a same-sector name, a lower-ranked DIFFERENT-sector candidate can backfill
+    # the freed slot (instead of the book collapsing to one over-concentrated name).
+    pool = scored[: max(slots * 4, slots + 5)]
+    candidate_plans: list[dict] = []
+    for candidate in pool:
         plan = _build_plan(candidate, policy, stop_mult, target_rr or 0.0, kelly_fraction)
         if plan:
-            trade_plans.append(plan)
+            if not plan.get("sector"):
+                plan["sector"] = sector_by_symbol.get(plan["symbol"])
+            candidate_plans.append(plan)
 
-    if not trade_plans:
+    if not candidate_plans:
         entry = audit_entry(agent=AGENT_NAME, action="no_valid_price", data={"scored": len(scored)})
         return {"trade_plan": {}, "trade_plans": [], "audit_trail": [entry]}
 
-    # Portfolio heat: cap concentration so the book isn't 3 correlated names in
-    # one sector (e.g. 2026-06-25's all-pharma picks). The FIRST position in a
-    # sector is always allowed — a single trade can't be over-concentrated against
-    # itself, and per-trade cap can legitimately exceed the sector cap. Only
-    # ADDITIONAL same-sector names are dropped once the sector's projected
-    # exposure would exceed max_sector_exposure_pct. Existing open positions
-    # pre-count toward their sector.
+    # Portfolio heat + slot fill: walk candidates by score, select up to `slots`.
+    # A sector's FIRST position is always allowed; ADDITIONAL same-sector names are
+    # skipped once projected exposure would exceed max_sector_exposure_pct — and the
+    # next diverse candidate takes the slot instead. UNKNOWN/None sectors are treated
+    # as independent (we can't assert correlation), so they never collapse together.
     heat_dropped: list[str] = []
-    if getattr(policy, "max_sector_exposure_pct", 0):
-        sector_cap_pct = policy.max_sector_exposure_pct
-        per_trade_pct = policy.max_capital_per_trade_pct
-        sector_count: dict[str, int] = {}
-        for op in current_positions:
-            sec = op.get("sector") or "UNKNOWN"
+    sector_cap_pct = getattr(policy, "max_sector_exposure_pct", 0) or 0
+    per_trade_pct = policy.max_capital_per_trade_pct
+    sector_count: dict[str, int] = {}
+    for op in current_positions:
+        sec = op.get("sector")
+        if sec:
             sector_count[sec] = sector_count.get(sec, 0) + 1
-        kept: list[dict] = []
-        for p in trade_plans:
-            sec = p.get("sector") or "UNKNOWN"
+
+    trade_plans: list[dict] = []
+    for p in candidate_plans:
+        if len(trade_plans) >= slots:
+            break
+        sec = p.get("sector")
+        if sector_cap_pct and sec:  # only enforce for KNOWN sectors
             already = sector_count.get(sec, 0)
             projected_pct = (already + 1) * per_trade_pct
-            # allow if it's the first in the sector, else require it stays under cap
             if already >= 1 and projected_pct > sector_cap_pct + 1e-6:
                 heat_dropped.append(p["symbol"])
-                logger.info("[%s] Portfolio heat: dropping %s — %d in sector '%s' would exceed %.0f%%",
+                logger.info("[%s] Portfolio heat: skip %s — %d in sector '%s' would exceed %.0f%%",
                             AGENT_NAME, p["symbol"], already + 1, sec, sector_cap_pct)
                 continue
             sector_count[sec] = already + 1
-            kept.append(p)
-        trade_plans = kept
+        trade_plans.append(p)
 
     if not trade_plans:
         entry = audit_entry(agent=AGENT_NAME, action="all_dropped_portfolio_heat",
