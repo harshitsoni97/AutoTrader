@@ -197,28 +197,32 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
         return {"trade_plan": {}, "trade_plans": [], "audit_trail": [entry]}
 
     # Portfolio heat: cap concentration so the book isn't 3 correlated names in
-    # one sector (e.g. 2026-06-25's all-pharma picks). Keep plans greedily by
-    # score while no sector exceeds max_sector_exposure_pct of capital. Each plan
-    # is charged its worst-case allocation (max_capital_per_trade_pct); existing
-    # open positions pre-charge their sector.
+    # one sector (e.g. 2026-06-25's all-pharma picks). The FIRST position in a
+    # sector is always allowed — a single trade can't be over-concentrated against
+    # itself, and per-trade cap can legitimately exceed the sector cap. Only
+    # ADDITIONAL same-sector names are dropped once the sector's projected
+    # exposure would exceed max_sector_exposure_pct. Existing open positions
+    # pre-count toward their sector.
     heat_dropped: list[str] = []
     if getattr(policy, "max_sector_exposure_pct", 0):
         sector_cap_pct = policy.max_sector_exposure_pct
         per_trade_pct = policy.max_capital_per_trade_pct
-        cap = policy.total_capital
-        sector_used_pct: dict[str, float] = {}
+        sector_count: dict[str, int] = {}
         for op in current_positions:
             sec = op.get("sector") or "UNKNOWN"
-            sector_used_pct[sec] = sector_used_pct.get(sec, 0.0) + (op.get("position_size_inr", 0) / cap * 100 if cap else 0)
+            sector_count[sec] = sector_count.get(sec, 0) + 1
         kept: list[dict] = []
         for p in trade_plans:
             sec = p.get("sector") or "UNKNOWN"
-            if sector_used_pct.get(sec, 0.0) + per_trade_pct > sector_cap_pct + 1e-6:
+            already = sector_count.get(sec, 0)
+            projected_pct = (already + 1) * per_trade_pct
+            # allow if it's the first in the sector, else require it stays under cap
+            if already >= 1 and projected_pct > sector_cap_pct + 1e-6:
                 heat_dropped.append(p["symbol"])
-                logger.info("[%s] Portfolio heat: dropping %s — sector '%s' would exceed %.0f%%",
-                            AGENT_NAME, p["symbol"], sec, sector_cap_pct)
+                logger.info("[%s] Portfolio heat: dropping %s — %d in sector '%s' would exceed %.0f%%",
+                            AGENT_NAME, p["symbol"], already + 1, sec, sector_cap_pct)
                 continue
-            sector_used_pct[sec] = sector_used_pct.get(sec, 0.0) + per_trade_pct
+            sector_count[sec] = already + 1
             kept.append(p)
         trade_plans = kept
 
