@@ -53,7 +53,10 @@ def _day_ohlc(symbol: str, target_date: str | None = None) -> dict | None:
             return None
         day = target_date or date.today().isoformat()
         d = date.fromisoformat(day)
-        frm = (d - timedelta(days=4)).isoformat()
+        # Narrow window: Upstox's 30-min intraday endpoint drops the most-recent
+        # day when from_date reaches too far back. d-2 covers a weekend gap while
+        # still returning the run_date's candles.
+        frm = (d - timedelta(days=2)).isoformat()
         to = (d + timedelta(days=1)).isoformat()
         rows = upstox_data.get_historical_candles(ikey, "minutes", 30, frm, to)
         todays = [r for r in (rows or []) if str(r.get("timestamp", "")).startswith(day)]

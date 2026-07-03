@@ -63,8 +63,10 @@ def closing_price(symbol: str, require_today: bool = True, target_date: str | No
     d = date.fromisoformat(day)
 
     # Fallback 1 (now primary): the target day's last 30-min intraday candle.
+    # Narrow window — Upstox's 30-min endpoint drops the most-recent day when
+    # from_date reaches too far back.
     try:
-        frm = (d - timedelta(days=4)).isoformat()
+        frm = (d - timedelta(days=2)).isoformat()
         to = (d + timedelta(days=1)).isoformat()
         mins = upstox_data.get_historical_candles(ikey, "minutes", 30, frm, to)
         todays = [r for r in (mins or []) if str(r.get("timestamp", "")).startswith(day)]
