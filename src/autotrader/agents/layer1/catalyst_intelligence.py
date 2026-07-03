@@ -174,6 +174,14 @@ def catalyst_intelligence_agent(state: TradingState) -> dict[str, Any]:
         final_catalysts = _llm_enrich_catalysts(final_catalysts, market_regime, cfg.llm)
         final_catalysts.sort(key=lambda x: x["catalyst_score"], reverse=True)
 
+    # Freshness decay — a one-time catalyst (buyback, deal) loses its edge over
+    # days. Applied AFTER all scoring so it's the final adjustment: a stale
+    # catalyst that keeps reappearing in the feed contributes almost nothing,
+    # which stops the same name from topping the list day after day.
+    from autotrader.core.catalyst_memory import apply_decay
+    final_catalysts = apply_decay(final_catalysts, state.get("run_date"))
+    final_catalysts.sort(key=lambda x: x["catalyst_score"], reverse=True)
+
     msg = create_message(
         source=AGENT_NAME,
         target="DiscoveryAgents",

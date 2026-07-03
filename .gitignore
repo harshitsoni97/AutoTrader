@@ -5,3 +5,4 @@ reports/
 .claude/worktrees/
 reports/trade_journal.jsonl
 reports/pick_attribution.jsonl
+reports/catalyst_seen.json
