@@ -29,7 +29,11 @@ def _fetch_closing_price(symbol: str) -> float | None:
     (no phantom P&L from a stale prior-day candle).
     """
     from autotrader.tools.price_utils import closing_price
-    return closing_price(symbol, require_today=True)
+    return closing_price(symbol, require_today=True, target_date=_FETCH_DATE.get("d"))
+
+
+# Module-level holder so the cached-per-symbol fetch uses the session's run_date.
+_FETCH_DATE: dict[str, str | None] = {"d": None}
 
 
 def _pnl_for_pick(entry_price: float | None, closing_price: float | None) -> float | None:
@@ -50,6 +54,10 @@ def compete_evaluator_agent(state: TradingState) -> dict[str, Any]:
     if not competitor_results:
         entry = audit_entry(agent=AGENT_NAME, action="no_results", data={})
         return {"audit_trail": [entry]}
+
+    # Price against the trading day (run_date), not the wall clock — post-market
+    # can run after local midnight.
+    _FETCH_DATE["d"] = state.get("run_date") or None
 
     # Fetch closing prices — cache per symbol to avoid duplicate Upstox calls
     price_cache: dict[str, float | None] = {}

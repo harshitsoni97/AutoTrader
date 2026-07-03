@@ -37,11 +37,13 @@ def _eod_price(symbol: str) -> float | None:
     return closing_price(symbol, require_today=False)
 
 
-def _day_ohlc(symbol: str) -> dict | None:
-    """Trade-day OHLC for a symbol via the Upstox daily candle.
+def _day_ohlc(symbol: str, target_date: str | None = None) -> dict | None:
+    """Trade-day OHLC for a symbol by aggregating that day's 30-min candles.
 
-    Returns {open, high, low, close, date} or None. Used to (a) decide whether a
-    BUY-LIMIT actually filled, and (b) judge stop/target from intraday high/low.
+    target_date (YYYY-MM-DD) is the TRADING day to price — pass the session's
+    run_date, NOT date.today(). Post-market often runs after local midnight (log
+    timestamps are UTC), so date.today() can roll to the next day and find no
+    candles. Returns {open, high, low, close, date} or None.
     """
     try:
         from autotrader.tools.price_utils import _instrument_key
@@ -49,16 +51,14 @@ def _day_ohlc(symbol: str) -> dict | None:
         ikey = _instrument_key(symbol)
         if not ikey:
             return None
-        today = date.today().isoformat()
-        frm = (date.today() - timedelta(days=4)).isoformat()
-        to = (date.today() + timedelta(days=1)).isoformat()
-        # Aggregate TODAY's 30-min candles. The daily ("days") candle for the
-        # current session isn't published intraday/just-after-close — it returns
-        # the last settled day, so using it silently scores against stale data.
+        day = target_date or date.today().isoformat()
+        d = date.fromisoformat(day)
+        frm = (d - timedelta(days=4)).isoformat()
+        to = (d + timedelta(days=1)).isoformat()
         rows = upstox_data.get_historical_candles(ikey, "minutes", 30, frm, to)
-        todays = [r for r in (rows or []) if str(r.get("timestamp", "")).startswith(today)]
+        todays = [r for r in (rows or []) if str(r.get("timestamp", "")).startswith(day)]
         if not todays:
-            logger.warning("no_intraday_candles_today", symbol=symbol)
+            logger.warning("no_intraday_candles_today", symbol=symbol, target_date=day)
             return None
         todays.sort(key=lambda r: r.get("timestamp", ""))
         return {
@@ -66,7 +66,7 @@ def _day_ohlc(symbol: str) -> dict | None:
             "high": max(float(r["high"]) for r in todays),
             "low": min(float(r["low"]) for r in todays),
             "close": float(todays[-1]["close"]),
-            "date": today,
+            "date": day,
         }
     except Exception as exc:
         logger.warning("day_ohlc_failed", symbol=symbol, error=str(exc))
@@ -154,9 +154,10 @@ def dry_run_pnl_agent(state: TradingState) -> dict[str, Any]:
     outcomes = []
     total_assumed_pnl = 0.0
 
+    run_date = state.get("run_date") or None
     for pos in positions:
         symbol = pos.get("symbol", "")
-        ohlc = _day_ohlc(symbol)
+        ohlc = _day_ohlc(symbol, run_date)
         if ohlc is None:
             logger.warning("no_day_ohlc", symbol=symbol)
             outcomes.append({
