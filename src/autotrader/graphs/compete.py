@@ -43,13 +43,16 @@ def _risk_router(state: TradingState) -> str:
 
 
 def _compete_router(state: TradingState) -> str:
-    """After compete_coordinator: always run trade_construction for ATR-based levels.
-    In actual mode with a primary, continue to full governance chain.
-    In dry_run mode, stop after trade_construction (no execution)."""
+    """After compete_coordinator: build trade PLANS (entry/stop/targets).
+
+    Pre-market never books — a pre-open fill is fiction (market isn't open). The
+    plans are saved and the intraday EntryAgent books them at the real price after
+    the open. In actual mode with a primary, still run governance/risk to validate
+    the plan; dry-run goes straight to plan construction.
+    """
     cfg = load_config()
     if not cfg.compete.dry_run and cfg.compete.primary:
         return "execute"
-    # dry_run: still compute trade levels but skip governance/execution
     scored = state.get("scored_opportunities", [])
     if scored:
         return "plan"
@@ -78,7 +81,6 @@ def build_compete_graph():
     graph.add_node("governance", governance_agent)
     graph.add_node("risk", risk_agent)
     graph.add_node("trade_construction", trade_construction_agent)
-    graph.add_node("execution", execution_agent)
 
     # Deterministic pipeline edges (same fan-out/fan-in as pre_market)
     graph.set_entry_point("universe_builder")
@@ -100,7 +102,6 @@ def build_compete_graph():
         _compete_router,
         {"execute": "governance", "plan": "trade_construction", "done": END},
     )
-    graph.add_edge("trade_construction", END)
     graph.add_conditional_edges(
         "governance",
         _governance_router,
@@ -111,7 +112,8 @@ def build_compete_graph():
         _risk_router,
         {"passed": "trade_construction", "failed": END},
     )
-    graph.add_edge("trade_construction", "execution")
-    graph.add_edge("execution", END)
+    # Pre-market ends at trade_construction — PLANS ONLY. The intraday EntryAgent
+    # books them at the real price after the open.
+    graph.add_edge("trade_construction", END)
 
     return graph.compile()

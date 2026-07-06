@@ -163,6 +163,14 @@ def main():
     from autotrader.tools.notifications import get_notifier
     notifier = get_notifier(config.notifications)
 
+    # Trade plans — entry/stop/targets for all opportunities. These are PLANS,
+    # booked at the real price after the open by the intraday EntryAgent.
+    notifier.notify_trade_plans(
+        result.get("trade_plans", []),
+        run_date=result.get("run_date", "unknown"),
+        dry_run=result.get("dry_run", config.trading_policy.dry_run),
+    )
+
     # Notify compete stack picks if compete mode is enabled.
     competitor_results = result.get("competitor_results", [])
     if competitor_results:

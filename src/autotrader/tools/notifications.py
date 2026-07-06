@@ -353,6 +353,24 @@ class Notifier:
         body = "\n\n".join(lines)
         return self.send(subject, body)
 
+    def notify_trade_plans(self, plans: list, run_date: str = "", dry_run: bool = True) -> dict[str, bool]:
+        """Pre-market PLANS (entry/stop/targets for all opportunities). Not fills —
+        these are booked at the real price after the open by the EntryAgent."""
+        if not self.cfg.notify_on_daily_summary or not plans:
+            return {}
+        mode = "DRY RUN" if dry_run else "LIVE"
+        subject = f"📋 Trade Plans [{mode}] — {run_date}"
+        lines = [f"{len(plans)} planned trade(s) — booked at the open, not now:"]
+        for p in plans:
+            rr = p.get("rr", p.get("risk_reward", 0))
+            lines.append(
+                f"\n*{p.get('symbol','?')}*  ({p.get('sector') or '?'})  score {p.get('score',0):.1f}\n"
+                f"   Entry ₹{p.get('entry',0):.2f}  |  Stop ₹{p.get('stop',0):.2f}\n"
+                f"   T1 ₹{p.get('target1',0):.2f}  |  T2 ₹{p.get('target2',0):.2f}  |  "
+                f"Qty {p.get('qty',0)}  |  R:R {rr:.1f}"
+            )
+        return self.send(subject, "\n".join(lines))
+
     def notify_error(self, context: str, error: str) -> dict[str, bool]:
         if not self.cfg.notify_on_error:
             return {}

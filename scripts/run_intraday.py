@@ -103,8 +103,20 @@ def main():
             print(f"Safety checks failed: {issues}")
             return
     
-    # Initialize state (would normally carry over from pre-market run)
+    # Carry over the pre-market session so the EntryAgent can book today's plans.
     state = create_initial_state(session_type="intraday")
+    try:
+        from autotrader.core.session_store import load_session
+        saved = load_session()
+        if saved:
+            state.update({k: v for k, v in saved.items() if v is not None})
+            state["session_type"] = "intraday"
+            logger.info("premarket_session_loaded", plans=len(saved.get("trade_plans", [])),
+                        scored=len(saved.get("scored_opportunities", [])))
+        else:
+            logger.warning("no_premarket_session — nothing to book intraday")
+    except Exception as exc:
+        logger.warning("premarket_session_load_failed", error=str(exc))
     graph = build_intraday_graph()
     
     iteration = 0
@@ -126,10 +138,17 @@ def main():
                 "market_confidence": result.get("market_confidence", state.get("market_confidence")),
                 "positions": result.get("positions", state.get("positions", [])),
                 "orders": result.get("orders", state.get("orders", [])),
+                "daily_trades_taken": result.get("daily_trades_taken", state.get("daily_trades_taken", 0)),
                 "daily_pnl": result.get("daily_pnl", state.get("daily_pnl", 0.0)),
                 "consecutive_losses": result.get("consecutive_losses", state.get("consecutive_losses", 0)),
             })
-            
+            # Persist so post-market prices the actually-booked positions.
+            try:
+                from autotrader.core.session_store import save_session
+                save_session(state)
+            except Exception as exc:
+                logger.warning("intraday_session_save_failed", error=str(exc))
+
             open_positions = [p for p in state.get("positions", []) if p.get("status") == "open"]
             print(
                 f"[{datetime.now().strftime('%H:%M:%S')}] "
