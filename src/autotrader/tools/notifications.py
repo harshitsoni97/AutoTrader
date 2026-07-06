@@ -189,7 +189,8 @@ class Notifier:
             return {}
         dry_run = summary.get('dry_run', True)
         mode = "DRY RUN" if dry_run else "LIVE"
-        subject = f"Daily Summary [{mode}] — {summary.get('run_date', '')}"
+        label = "Final P&L" if summary.get("final_label") else "Daily Summary"
+        subject = f"{label} [{mode}] — {summary.get('run_date', '')}"
 
         pnl = summary.get('daily_pnl', 0.0)
         pnl_label = "Assumed P&L" if dry_run else "Realized P&L"

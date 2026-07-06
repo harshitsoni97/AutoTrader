@@ -77,7 +77,15 @@ def main():
             return
     
     logger.info("safety_checks_passed")
-    
+
+    # Re-price any days deferred because candles weren't published at post-market
+    # time. Candles are available by now, so this sends yesterday's final P&L.
+    try:
+        from autotrader.core.reprice import reprice_pending
+        reprice_pending(config)
+    except Exception as exc:
+        logger.warning("reprice_pending_failed", error=str(exc))
+
     # Initialize state
     state = create_initial_state(session_type="pre_market")
     

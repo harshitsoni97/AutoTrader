@@ -98,18 +98,31 @@ def main():
     from autotrader.tools.notifications import get_notifier
     notifier = get_notifier(config.notifications)
 
-    # End-of-day summary — always send (0 trades is meaningful information)
+    # End-of-day summary. If pricing was incomplete (candles not published yet),
+    # defer: record the day for re-pricing at the next pre-market instead of
+    # sending a false ₹0 summary.
     trades_today = result.get("daily_trades_taken", 0)
     daily_pnl = round(result.get("daily_pnl", 0.0), 2)
-    notifier.notify_daily_summary({
-        "run_date": run_date,
-        "dry_run": result.get("dry_run", config.trading_policy.dry_run),
-        "trades": trades_today,
-        "daily_pnl": daily_pnl,
-        "regime": result.get("market_regime", "n/a"),
-        "trade_outcomes": result.get("trade_outcomes", []),
-        "journal_total": result.get("journal_total", 0),
-    })
+    if result.get("pricing_incomplete") and trades_today > 0:
+        from autotrader.core.pending_reprice import add as _defer
+        _defer(run_date)
+        logger.warning("daily_summary_deferred_pricing_incomplete", run_date=run_date)
+        notifier.send(
+            subject=f"Daily Summary [pending] — {run_date}",
+            body=(f"Regime: {result.get('market_regime', 'n/a')} | Trades: {trades_today}\n"
+                  "⏳ Prices not yet published by the data provider — final P&L will "
+                  "be sent at the next pre-market run."),
+        )
+    else:
+        notifier.notify_daily_summary({
+            "run_date": run_date,
+            "dry_run": result.get("dry_run", config.trading_policy.dry_run),
+            "trades": trades_today,
+            "daily_pnl": daily_pnl,
+            "regime": result.get("market_regime", "n/a"),
+            "trade_outcomes": result.get("trade_outcomes", []),
+            "journal_total": result.get("journal_total", 0),
+        })
 
     # Compete leaderboard — which stack made/lost most today
     competitor_results = result.get("competitor_results", [])

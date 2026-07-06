@@ -210,33 +210,43 @@ def dry_run_pnl_agent(state: TradingState) -> dict[str, Any]:
             pnl=result["pnl"],
         )
 
-    # Append to the trade journal — the dataset for evaluating the adaptive
-    # target logic (and future RL tuning of its breakpoints).
+    # If any position couldn't be priced (candles not published yet), the day is
+    # incomplete — skip journaling and flag it so post-market can defer to the
+    # next run instead of recording a false ₹0.
+    pricing_incomplete = any(o.get("scenario") == "price_unavailable" for o in outcomes)
+
     journal_total = 0
-    try:
-        from autotrader.core.trade_journal import append_outcomes, count_rows
-        append_outcomes(
-            run_date=state.get("run_date", ""),
-            regime=state.get("market_regime", "unknown"),
-            dry_run=dry_run,
-            outcomes=outcomes,
-        )
-        journal_total = count_rows()
-        # Passive heartbeat: cumulative dataset size for the adaptive-RR review.
-        logger.info("trade_journal_heartbeat", total_trades=journal_total,
-                    added_today=len(outcomes))
-    except Exception as exc:
-        logger.warning("trade_journal_call_failed", error=str(exc))
+    if pricing_incomplete:
+        logger.warning("dry_run_pricing_incomplete", run_date=state.get("run_date"),
+                       unpriced=[o["symbol"] for o in outcomes if o.get("scenario") == "price_unavailable"])
+    else:
+        # Append to the trade journal — the dataset for evaluating the adaptive
+        # target logic (and future RL tuning of its breakpoints).
+        try:
+            from autotrader.core.trade_journal import append_outcomes, count_rows
+            append_outcomes(
+                run_date=state.get("run_date", ""),
+                regime=state.get("market_regime", "unknown"),
+                dry_run=dry_run,
+                outcomes=outcomes,
+            )
+            journal_total = count_rows()
+            logger.info("trade_journal_heartbeat", total_trades=journal_total,
+                        added_today=len(outcomes))
+        except Exception as exc:
+            logger.warning("trade_journal_call_failed", error=str(exc))
 
     entry = audit_entry(agent=AGENT_NAME, action="dry_run_pnl_computed", data={
         "positions": len(positions),
         "total_assumed_pnl": round(total_assumed_pnl, 2),
+        "pricing_incomplete": pricing_incomplete,
         "outcomes": outcomes,
     })
 
     return {
         "trade_outcomes": outcomes,
         "daily_pnl": total_assumed_pnl,
+        "pricing_incomplete": pricing_incomplete,
         "journal_total": journal_total,
         "audit_trail": [entry],
     }

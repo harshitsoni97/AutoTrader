@@ -6,3 +6,4 @@ reports/
 reports/trade_journal.jsonl
 reports/pick_attribution.jsonl
 reports/catalyst_seen.json
+reports/pending_reprice.json
