@@ -35,6 +35,30 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 
+def _post_exit_webhook(exit_info: dict, timeout: float = 10.0) -> bool:
+    """POST a structured exit event to EXIT_WEBHOOK_URL (env only) on stop/target.
+
+    Machine-readable JSON for driving an external system (real order, dashboard,
+    push). No-op if the env var isn't set. Never raises into the trading path.
+    """
+    url = os.getenv("EXIT_WEBHOOK_URL")
+    if not url:
+        return False
+    from datetime import datetime, timezone
+    payload = {
+        "event": "exit",
+        "symbol": exit_info.get("symbol"),
+        "reason": exit_info.get("reason"),      # STOP_HIT | TARGET1_PARTIAL | TARGET2
+        "price": exit_info.get("price"),
+        "qty": exit_info.get("qty"),
+        "pnl": exit_info.get("pnl"),
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    ok = _post(url, json=payload, timeout=timeout)
+    logger.info("exit_webhook_posted", symbol=payload["symbol"], reason=payload["reason"], ok=ok)
+    return ok
+
+
 def _post(url: str, *, json=None, data=None, auth=None, timeout: float = 10.0) -> bool:
     """POST with a single retry; returns True on 2xx, False otherwise (never raises)."""
     for attempt in range(2):
@@ -178,10 +202,19 @@ class Notifier:
     def notify_exit(self, exit_info: dict) -> dict[str, bool]:
         if not self.cfg.notify_on_exit:
             return {}
+        # Machine-readable webhook first: POST the exit event to an external API
+        # if EXIT_WEBHOOK_URL is set (env only — never committed). Useful to drive
+        # a real order, a dashboard, or a mobile push on stop/target.
+        _post_exit_webhook(exit_info, self.cfg.timeout_seconds)
+
         pnl = exit_info.get("pnl", 0.0)
         emoji = "🟢" if pnl >= 0 else "🔴"
         subject = f"{emoji} Exit ({exit_info.get('reason')}) — {exit_info.get('symbol')}"
+        price = exit_info.get("price")
+        qty = exit_info.get("qty")
         body = f"Reason: {exit_info.get('reason')}\nPnL: ₹{pnl}"
+        if price and qty:
+            body += f"\nExit: {qty} @ ₹{price}"
         return self.send(subject, body)
 
     def notify_daily_summary(self, summary: dict) -> dict[str, bool]:
