@@ -141,6 +141,7 @@ def monitoring_agent(state: TradingState) -> dict[str, Any]:
             daily_pnl_delta += realized_pnl
             pos = {**pos, "target1_hit": True, "qty": qty - half_qty}
             new_orders.append(exit_order)
+            exits.append({"symbol": symbol, "reason": "TARGET1_PARTIAL", "pnl": round(realized_pnl, 2)})
             alerts.append(f"{symbol}: Target1 hit — partial exit {half_qty} shares @ {current_price:.2f}")
             logger.info("[%s] TARGET1 HIT: %s partial exit %d @ %.2f, PnL=%.0f", AGENT_NAME, symbol, half_qty, current_price, realized_pnl)
 
