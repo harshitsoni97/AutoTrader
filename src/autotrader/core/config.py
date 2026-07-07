@@ -46,6 +46,9 @@ class TradingPolicy(BaseModel):
     confidence_min_trade: float = 0.65        # hard floor — below this, do not trade
     confidence_full_size: float = 0.75        # at/above this, full size
     confidence_floor_size_mult: float = 0.4   # size multiplier at confidence_min_trade
+    # At the open, don't book a plan whose live price has already run more than
+    # this many ATR above the planned entry (chasing an extended move).
+    max_entry_extension_atr: float = 1.5
 
 
 class MemoryBackendConfig(BaseModel):

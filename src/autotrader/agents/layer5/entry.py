@@ -85,6 +85,18 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
                                      data={"symbol": symbol, "live": live, "stop": stop}))
             logger.info("[%s] Skip %s — already at/below stop (live %.2f <= %.2f)", AGENT_NAME, symbol, live, stop)
             continue
+        # Extension guard: don't chase a name that has already run too far above
+        # the planned entry at the open (real-desk "don't chase" rule).
+        plan_entry = plan.get("entry", 0) or 0
+        atr = plan.get("atr_used", 0) or 0
+        max_ext = getattr(policy, "max_entry_extension_atr", 1.5)
+        if plan_entry and atr > 0 and (live - plan_entry) > max_ext * atr:
+            audit.append(audit_entry(agent=AGENT_NAME, action="skip_extended_at_open",
+                                     data={"symbol": symbol, "live": live, "plan_entry": plan_entry,
+                                           "ext_atr": round((live - plan_entry) / atr, 2)}))
+            logger.info("[%s] Skip %s — extended %.1f ATR above plan entry at open (live %.2f, plan %.2f)",
+                        AGENT_NAME, symbol, (live - plan_entry) / atr, live, plan_entry)
+            continue
 
         # Book at the real live price (adverse slippage on the buy).
         fill_price, slip = slipped_fill(live, qty, "BUY", half_spread_bps, impact_bps_per_lakh)

@@ -39,6 +39,36 @@ def _market_regime_score(regime: str, confidence: float) -> float:
     return float(base)
 
 
+def _extension_penalty(candidate: dict) -> tuple[float, float]:
+    """Penalty (composite points) for a price already extended above VWAP.
+
+    Real-desk "don't chase" measure: how far price has run above VWAP in ATR
+    units. A fresh breakout sits near VWAP; an exhausted one is several ATR above
+    it and tends to mean-revert. This is the principled alternative to an RSI
+    penalty (which fights momentum). Returns (penalty_points, extension_atr).
+
+      ext <= 1.0 ATR   → 0     (healthy)
+      1.0-2.0 ATR      → 6
+      2.0-3.0 ATR      → 14
+      > 3.0 ATR        → 22    (badly extended / chasing)
+    """
+    price = candidate.get("current_price", 0) or 0
+    vwap = candidate.get("vwap", 0) or 0
+    atr = candidate.get("daily_atr") or candidate.get("atr") or 0
+    if not price or not vwap or not atr or atr <= 0:
+        return 0.0, 0.0
+    ext = (price - vwap) / atr
+    if ext <= 1.0:
+        pen = 0.0
+    elif ext <= 2.0:
+        pen = 6.0
+    elif ext <= 3.0:
+        pen = 14.0
+    else:
+        pen = 22.0
+    return pen, round(ext, 2)
+
+
 def _sector_score(symbol: str, sector_rankings: list[dict], top_sectors: list[str]) -> float:
     # Map symbol to sector — simplified lookup
     from autotrader.agents.layer1.catalyst_intelligence import _FALLBACK_SECTOR_WATCHLIST
@@ -149,12 +179,18 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
             + tech_s * WEIGHTS["technical"]
             + options_s * WEIGHTS["options_sentiment"]
         )
-        composite = round(composite, 2)
+        # Extension penalty — dock names already run too far above VWAP (chasing).
+        ext_pen, ext_atr = _extension_penalty(candidate)
+        composite = round(composite - ext_pen, 2)
+        if ext_pen:
+            logger.info("[%s] %s extension penalty -%.0f (%.1f ATR above VWAP)",
+                        AGENT_NAME, symbol, ext_pen, ext_atr)
 
         scored.append({
             "symbol": symbol,
             "sector": candidate.get("sector"),
             "score": composite,
+            "extension_atr": ext_atr,
             "composite_score": composite,  # alias for test compatibility
             "component_scores": {
                 "market_regime": round(regime_score, 2),
