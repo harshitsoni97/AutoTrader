@@ -254,7 +254,16 @@ def trade_construction_agent(state: TradingState) -> dict[str, Any]:
     size_mult = state.get("confidence_size_mult")
     if size_mult is None:
         size_mult = confidence_size_mult(confidence, policy)
-    size_mult = size_mult if size_mult and size_mult > 0 else 1.0
+    # A zero multiplier means confidence is below the trade floor → NO trade.
+    # (Do not reset to 1.0 — that would defeat the floor, e.g. a 57% day booking
+    # full size. Governance is skipped in compete dry-run, so enforce it here.)
+    if not size_mult or size_mult <= 0:
+        entry = audit_entry(agent=AGENT_NAME, action="below_confidence_floor",
+                            data={"confidence": confidence,
+                                  "floor": getattr(policy, "confidence_min_trade", 0.65)})
+        logger.info("[%s] Confidence %.2f below trade floor — no plans built",
+                    AGENT_NAME, confidence)
+        return {"trade_plan": {}, "trade_plans": [], "audit_trail": [entry]}
 
     total_capital = policy.total_capital
     max_per_trade = total_capital * policy.max_capital_per_trade_pct / 100

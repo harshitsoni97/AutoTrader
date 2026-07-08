@@ -49,6 +49,15 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
 
     cfg = load_config()
     policy = cfg.trading_policy
+
+    # Enforce the confidence floor at booking time too (defense in depth — a plan
+    # from a saved session must not book below the floor).
+    confidence = state.get("market_confidence", 0.0)
+    floor = getattr(policy, "confidence_min_trade", 0.65)
+    if confidence and confidence < floor:
+        return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="skip_below_confidence_floor",
+                                            data={"confidence": confidence, "floor": floor})]}
+
     is_dry_run = state.get("dry_run", True)
     run_date = state.get("run_date", "")
     half_spread_bps = getattr(policy, "dry_run_slippage_bps", 4.0)
