@@ -8,6 +8,7 @@ from autotrader.agents.layer1.market_regime import market_regime_agent
 from autotrader.agents.layer5.monitoring import monitoring_agent
 from autotrader.agents.layer5.reentry import intra_reentry_agent
 from autotrader.agents.layer5.entry import entry_agent
+from autotrader.agents.layer5.intraday_hunt import intraday_hunt_agent
 
 logger = structlog.get_logger()
 
@@ -19,7 +20,9 @@ def build_intraday_graph():
 
     # Refresh regime every cycle (Nifty moves intraday)
     graph.add_node("market_regime", market_regime_agent)
-    # Book pre-market PLANS at the real live price after the open (with validation)
+    # If the morning was weak (no plans) but the regime improved, build plans now
+    graph.add_node("intraday_hunt", intraday_hunt_agent)
+    # Book plans (pre-market or hunted) at the real live price, with validation
     graph.add_node("entry", entry_agent)
     # Monitor / manage open positions
     graph.add_node("monitoring", monitoring_agent)
@@ -27,7 +30,8 @@ def build_intraday_graph():
     graph.add_node("reentry", intra_reentry_agent)
 
     graph.set_entry_point("market_regime")
-    graph.add_edge("market_regime", "entry")
+    graph.add_edge("market_regime", "intraday_hunt")
+    graph.add_edge("intraday_hunt", "entry")
     graph.add_edge("entry", "monitoring")
     graph.add_edge("monitoring", "reentry")
 
