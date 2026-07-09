@@ -39,6 +39,8 @@ def _determine_regime(
     fii_net: float,
     global_pct: float,
     gift_gap_pct: float = 0.0,
+    intraday_pct: float = 0.0,
+    is_intraday: bool = False,
 ) -> tuple[str, float]:
     """Map market conditions to a regime label with confidence score.
 
@@ -46,24 +48,50 @@ def _determine_regime(
     so the regime reflects today's conditions, not a multi-week trend.
     GIFT Nifty gap is the highest-information pre-open forward signal and
     gets the most weight among same-day inputs.
+
+    Intraday, the pre-open signals (GIFT gap especially) are stale — the market
+    has already opened and may have PIVOTED off them. So when `is_intraday`, the
+    GIFT gap is down-weighted and the LIVE intraday trend (`intraday_pct`, LTP vs
+    today's open) is added as a dominant signal, letting a genuine same-day
+    reversal move the regime the frozen pre-open signals couldn't see.
     """
     score_bull = 0.0
     score_bear = 0.0
     score_vol = 0.0
 
-    # GIFT Nifty gap — best forward-looking signal for today's open (highest weight)
+    # GIFT Nifty gap — best forward-looking signal for today's OPEN. Pre-market it
+    # is the highest-weight input; intraday it is stale (the open already happened),
+    # so we discount it and let the live intraday trend below carry the signal.
+    gift_w = 0.35 if is_intraday else 1.0
     if gift_gap_pct > 0.5:
-        score_bull += 30
+        score_bull += 30 * gift_w
     elif gift_gap_pct > 0.15:
-        score_bull += 18
+        score_bull += 18 * gift_w
     elif gift_gap_pct > 0:
-        score_bull += 8
+        score_bull += 8 * gift_w
     elif gift_gap_pct < -0.5:
-        score_bear += 30
+        score_bear += 30 * gift_w
     elif gift_gap_pct < -0.15:
-        score_bear += 18
+        score_bear += 18 * gift_w
     else:
-        score_bear += 8
+        score_bear += 8 * gift_w
+
+    # Live intraday trend — only fed intraday. LTP vs today's open is the freshest
+    # read of the tape and gets top weight so a decisive same-day pivot (a weak
+    # open that reverses green) can actually lift the regime, and a fade can sink it.
+    if is_intraday:
+        if intraday_pct >= 0.8:
+            score_bull += 40
+        elif intraday_pct >= 0.4:
+            score_bull += 25
+        elif intraday_pct >= 0.1:
+            score_bull += 10
+        elif intraday_pct <= -0.8:
+            score_bear += 40
+        elif intraday_pct <= -0.4:
+            score_bear += 25
+        elif intraday_pct <= -0.1:
+            score_bear += 10
 
     # Short-term Nifty trend (2-day return — intraday context, not multi-week trend)
     if nifty_pct > 1.0:
@@ -220,7 +248,23 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
     # GIFT Nifty gap vs previous close — highest-information pre-open signal
     gift_gap_pct = _compute_gift_gap(gift_data, nifty)
 
-    regime, confidence = _determine_regime(nifty_pct, vix, fii_net, global_pct, gift_gap_pct)
+    session_type = state.get("session_type", "pre_market")
+    is_intraday = session_type == "intraday"
+
+    # Live intraday trend — only meaningful (and only fetched) intraday. Captures a
+    # same-day pivot the frozen pre-open signals (GIFT gap, 2-day return) can't see.
+    intraday_pct = 0.0
+    if is_intraday:
+        live = upstox_data.get_nifty_intraday_move()
+        if live:
+            intraday_pct = live.get("pct_from_open", 0.0)
+            logger.info("[%s] Live Nifty: LTP=%.1f  %+.2f%% from open  range_pos=%.2f",
+                        AGENT_NAME, live.get("ltp", 0), intraday_pct, live.get("range_pos", 0))
+
+    regime, confidence = _determine_regime(
+        nifty_pct, vix, fii_net, global_pct, gift_gap_pct,
+        intraday_pct=intraday_pct, is_intraday=is_intraday,
+    )
 
     # Optional LLM synthesis — narrative enrichment + confidence refinement.
     # Intraday, the loop runs every few minutes; calling the analysis LLM each
@@ -230,8 +274,6 @@ def market_regime_agent(state: TradingState) -> dict[str, Any]:
     # always enrich (runs once).
     llm_enrichment: dict = {}
     cfg = load_config()
-    session_type = state.get("session_type", "pre_market")
-    is_intraday = session_type == "intraday"
 
     prev_regime = state.get("market_regime")
     prev_vix = state.get("india_vix")

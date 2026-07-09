@@ -208,6 +208,52 @@ def get_nifty_data(days: int = 25) -> list[dict] | None:
     return candles[-days:] if len(candles) > days else candles
 
 
+def get_nifty_intraday_move() -> dict[str, float] | None:
+    """Live intraday read of Nifty 50 — how the index is trading TODAY.
+
+    The daily/pre-open signals used for the pre-market regime (GIFT gap, 2-day
+    return) are frozen once the session opens and can't see a same-day pivot.
+    This returns the live picture so the intraday regime refresh can:
+
+      - pct_from_open: LTP vs today's first-candle open (the intraday trend)
+      - pct_from_low:  how far off the session low (reversal strength)
+      - range_pos:     0..1 position of LTP within today's high-low range
+
+    Returns None if live data isn't available (falls through to frozen signals).
+    """
+    key = "NSE_INDEX|Nifty 50"
+    ltp_map = get_ltp([key])
+    ltp = ltp_map.get(key) if ltp_map else None
+    if not ltp or ltp <= 0:
+        return None
+
+    today = date.today()
+    from_date = (today - timedelta(days=4)).strftime("%Y-%m-%d")
+    to_date = today.strftime("%Y-%m-%d")
+    candles = get_historical_candles(key, "minutes", 30, from_date, to_date)
+    if not candles:
+        return None
+
+    # Keep only today's candles (timestamps are ISO strings starting YYYY-MM-DD).
+    today_str = today.strftime("%Y-%m-%d")
+    todays = [c for c in candles if str(c.get("timestamp", "")).startswith(today_str)]
+    if not todays:
+        return None
+
+    todays.sort(key=lambda x: x["timestamp"])
+    day_open = todays[0]["open"]
+    day_high = max(c["high"] for c in todays)
+    day_low = min(c["low"] for c in todays)
+    rng = day_high - day_low
+
+    return {
+        "ltp": float(ltp),
+        "pct_from_open": round((ltp / day_open - 1) * 100, 3) if day_open else 0.0,
+        "pct_from_low": round((ltp / day_low - 1) * 100, 3) if day_low else 0.0,
+        "range_pos": round((ltp - day_low) / rng, 3) if rng > 0 else 0.5,
+    }
+
+
 # ---------------------------------------------------------------------------
 # 5. Options chain
 # ---------------------------------------------------------------------------
