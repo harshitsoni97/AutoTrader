@@ -268,9 +268,11 @@ def test_opportunity_scoring():
     assert len(scored) == 1
     score = scored[0]["composite_score"]
     
-    # Weights: market_regime=0.18, sector=0.17, rs=0.20, vol=0.15, catalyst=0.15, tech=0.10, options=0.05
+    # strong_bull @ 0.9 confidence → regime-aware "catalyst-relaxed" weights kick in
+    # (breadth is the edge; catalyst weight reallocated to RS/technical/regime).
+    # market_regime=0.19, sector=0.17, rs=0.26, vol=0.15, catalyst=0.05, tech=0.13, options=0.05
     # options_signal defaults to "neutral" → options_s=50
-    expected = 100*0.18 + 100*0.17 + 80*0.20 + 60*0.15 + 65*0.15 + 70*0.10 + 50*0.05
+    expected = 100*0.19 + 100*0.17 + 80*0.26 + 60*0.15 + 65*0.05 + 70*0.13 + 50*0.05
     assert abs(score - expected) < 0.01
 
 

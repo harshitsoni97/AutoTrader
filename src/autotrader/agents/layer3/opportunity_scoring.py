@@ -29,6 +29,38 @@ WEIGHTS = {
 }
 
 
+# Strong long-favorable regimes where broad breadth is itself the edge and a
+# pure-technical momentum breakout is a legitimate setup even without news.
+_STRONG_BULL = {"risk_on", "strong_bull", "bullish", "bull"}
+
+
+def _composite_weights(regime: str, confidence: float) -> dict[str, float]:
+    """Signal weights for the composite, regime-aware.
+
+    Default: a news catalyst carries real weight (15%) — in a choppy or bearish
+    tape you want a specific reason to be long.
+
+    In a STRONG long-favorable regime (risk_on/bullish with high confidence),
+    breadth is the edge: clean technical-momentum breakouts are tradeable without
+    a catalyst, exactly as trend desks treat them. So the catalyst weight is
+    reduced and reallocated to relative-strength/technical/regime — a no-news
+    momentum name is no longer dead-weighted out of eligibility. The extension
+    penalty still filters genuinely over-extended (chase) names, so this loosens
+    the catalyst demand WITHOUT lowering the guard against chasing.
+    """
+    if regime in _STRONG_BULL and confidence >= 0.75:
+        return {
+            "market_regime": 0.19,
+            "sector_strength": 0.17,
+            "relative_strength": 0.26,
+            "volume": 0.15,
+            "catalyst": 0.05,
+            "technical": 0.13,
+            "options_sentiment": 0.05,
+        }
+    return WEIGHTS
+
+
 def _market_regime_score(regime: str, confidence: float) -> float:
     # Confidence is applied at the composite level; base score reflects regime only
     base = {
@@ -141,6 +173,10 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
     top_sectors = state.get("top_sectors", [])
 
     regime_score = _market_regime_score(market_regime, market_confidence)
+    weights = _composite_weights(market_regime, market_confidence)
+    if weights is not WEIGHTS:
+        logger.info("[%s] Strong %s (%.0f%%) — catalyst-relaxed weights (breadth is the edge)",
+                    AGENT_NAME, market_regime, market_confidence * 100)
 
     # Options sentiment score (0-100) from PCR + IV skew + max pain alignment
     options_signal = state.get("options_signal", "neutral")
@@ -171,13 +207,13 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
                 cat_s = float(cat_entry.get("score", cat_entry.get("catalyst_score", 0)))
 
         composite = (
-            regime_score * WEIGHTS["market_regime"]
-            + sector_s * WEIGHTS["sector_strength"]
-            + rs_s * WEIGHTS["relative_strength"]
-            + vol_s * WEIGHTS["volume"]
-            + cat_s * WEIGHTS["catalyst"]
-            + tech_s * WEIGHTS["technical"]
-            + options_s * WEIGHTS["options_sentiment"]
+            regime_score * weights["market_regime"]
+            + sector_s * weights["sector_strength"]
+            + rs_s * weights["relative_strength"]
+            + vol_s * weights["volume"]
+            + cat_s * weights["catalyst"]
+            + tech_s * weights["technical"]
+            + options_s * weights["options_sentiment"]
         )
         # Extension penalty — dock names already run too far above VWAP (chasing).
         ext_pen, ext_atr = _extension_penalty(candidate)
