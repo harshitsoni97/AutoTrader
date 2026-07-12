@@ -560,7 +560,8 @@ def evaluate_scheme(
         })
 
     if not trades:
-        return {"trades": 0, "win_rate": 0.0, "avg_rr": 0.0, "total_pnl_pct": 0.0, "metric": 0.0}
+        return {"trades": 0, "wins": 0, "stops": 0, "win_rate": 0.0,
+                "avg_pnl_pct": 0.0, "total_pnl_pct": 0.0, "metric": 0.0, "trade_log": []}
 
     wins = [t for t in trades if t["hit_target"]]
     stops = [t for t in trades if t["hit_stop"]]
