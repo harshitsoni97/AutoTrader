@@ -29,6 +29,21 @@ from itertools import product
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
 
+# Load .env so UPSTOX_ANALYTICS_TOKEN is available on a manual run (the systemd
+# services get it via EnvironmentFile; a shell run doesn't).
+from pathlib import Path as _Path
+_env_path = _Path(__file__).parent.parent / ".env"
+if _env_path.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_path, override=False)
+    except ImportError:
+        for _line in _env_path.read_text().splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("backtest")
 
