@@ -254,6 +254,7 @@ def precompute_indicators(
                 "date": day_str,
                 "close": closes[-1],
                 "atr": round(atr, 4),
+                "vwap": round(vwap, 4),
                 "pattern": pattern,
                 "volume_score": round(vol_score, 1),
                 "adx": adx,
@@ -402,6 +403,74 @@ def composite_score(candidate: dict, weights: dict, regime_score: float = 60.0,
 
 
 # ---------------------------------------------------------------------------
+# ENHANCED scoring — mirrors the LIVE system so the walk-forward can A/B-test
+# this session's changes: per-day regime (not a fixed 60), the regime-aware
+# catalyst relaxation, and the extension penalty. Uses the real agent functions
+# so the backtest tests exactly what production computes.
+# ---------------------------------------------------------------------------
+
+def build_regime_map(nifty_rows: list[dict]) -> dict[str, tuple[str, float, float]]:
+    """{date: (regime_label, regime_score, confidence)} from Nifty's 2-day return.
+
+    A daily proxy for the live regime agent (which also uses VIX/FII/GIFT, not
+    available cheaply in history). Strong up days → risk_on/bullish with high
+    confidence (which triggers the catalyst relaxation); down days → bearish.
+    """
+    by_date = {r["timestamp"][:10]: r for r in nifty_rows}
+    dates = sorted(by_date.keys())
+    close_by_date = {d: by_date[d]["close"] for d in dates}
+    out: dict[str, tuple[str, float, float]] = {}
+    for i, d in enumerate(dates):
+        if i < 2:
+            out[d] = ("range_bound", 60.0, 0.6)
+            continue
+        ret = (close_by_date[d] / close_by_date[dates[i - 2]] - 1) * 100
+        if ret >= 1.0:
+            out[d] = ("risk_on", 95.0, 0.90)
+        elif ret >= 0.3:
+            out[d] = ("bullish", 80.0, 0.80)
+        elif ret <= -1.0:
+            out[d] = ("bearish", 30.0, 0.85)
+        elif ret <= -0.3:
+            out[d] = ("bearish", 40.0, 0.72)
+        else:
+            out[d] = ("range_bound", 60.0, 0.60)
+    return out
+
+
+def _ext_penalty(close: float, vwap: float, atr: float) -> float:
+    """Extension penalty (composite points) — same buckets as the live agent."""
+    if not close or not vwap or not atr or atr <= 0:
+        return 0.0
+    ext = (close - vwap) / atr
+    if ext > 3.0:
+        return 22.0
+    if ext > 2.0:
+        return 14.0
+    if ext > 1.0:
+        return 6.0
+    return 0.0
+
+
+def composite_score_enhanced(candidate: dict, regime_label: str, regime_score: float,
+                             confidence: float, sector_score: float = 60.0,
+                             rs_score: float = 60.0, options_score: float = 50.0) -> float:
+    """Live-parity composite: per-day regime + regime-aware weights + extension penalty."""
+    from autotrader.agents.layer3.opportunity_scoring import _composite_weights
+    w = _composite_weights(regime_label, confidence)
+    base = (
+        regime_score       * w["market_regime"]
+        + sector_score     * w["sector_strength"]
+        + rs_score         * w["relative_strength"]
+        + candidate["volume_score"] * w["volume"]
+        + 0.0              * w["catalyst"]
+        + candidate["technical_score"] * w["technical"]
+        + options_score    * w["options_sentiment"]
+    )
+    return base - _ext_penalty(candidate.get("close", 0), candidate.get("vwap", 0), candidate.get("atr", 0))
+
+
+# ---------------------------------------------------------------------------
 # Grid search
 # ---------------------------------------------------------------------------
 
@@ -416,8 +485,15 @@ def evaluate_scheme(
     stop_mult: float,
     target_rr: float,
     indicator_cache: dict | None = None,
+    mode: str = "baseline",
+    regime_map: dict | None = None,
 ) -> dict:
-    """Run one (weights, params) combo across given day indices. Returns metrics."""
+    """Run one (weights, params) combo across given day indices. Returns metrics.
+
+    mode='baseline' → fixed regime 60, static weights (original backtest).
+    mode='enhanced' → per-day regime + regime-aware weights + extension penalty
+                      (mirrors the live system, to A/B-test this session's changes).
+    """
     trades = []
 
     for day_idx in day_indices:
@@ -435,9 +511,14 @@ def evaluate_scheme(
             continue
 
         # Score and filter
+        if mode == "enhanced":
+            reg_label, reg_score, conf = (regime_map or {}).get(day_str, ("range_bound", 60.0, 0.6))
         scored = []
         for c in candidates:
-            score = composite_score(c, weights)
+            if mode == "enhanced":
+                score = composite_score_enhanced(c, reg_label, reg_score, conf)
+            else:
+                score = composite_score(c, weights)
             if score >= min_score:
                 scored.append({**c, "score": score})
 
@@ -664,6 +745,30 @@ def main():
     logger.info("  val:   trades=%d win_rate=%.1f%% avg_pnl=%.3f%%",
         best["val"]["trades"], best["val"]["win_rate"]*100, best["val"]["avg_pnl_pct"])
 
+    # ── A/B: does this session's LIVE logic beat the static baseline? ─────────
+    # Same best params + validation window; baseline (fixed regime, static
+    # weights) vs enhanced (per-day regime + regime-aware catalyst relaxation +
+    # extension penalty). This is the walk-forward test of the scoring changes.
+    logger.info("\n=== A/B ON HELD-OUT SET: baseline vs live-logic (enhanced) ===")
+    regime_map = build_regime_map(nifty_rows)
+    ab = {}
+    for mode in ("baseline", "enhanced"):
+        res = evaluate_scheme(
+            all_data, trading_days, val_days,
+            weights=best["weights"], min_score=best["min_score"],
+            adx_threshold=best["adx_threshold"], rsi_min=best["rsi_min"],
+            stop_mult=best["stop_mult"], target_rr=best["target_rr"],
+            indicator_cache=indicator_cache, mode=mode, regime_map=regime_map,
+        )
+        ab[mode] = res
+        logger.info("  %-9s | trades=%d win_rate=%.1f%% avg_pnl=%.3f%% total_pnl=%.2f%% metric=%.4f",
+            mode, res["trades"], res["win_rate"]*100, res["avg_pnl_pct"],
+            res["total_pnl_pct"], res["metric"])
+    d_win = (ab["enhanced"]["win_rate"] - ab["baseline"]["win_rate"]) * 100
+    d_pnl = ab["enhanced"]["avg_pnl_pct"] - ab["baseline"]["avg_pnl_pct"]
+    verdict = "ENHANCED better" if ab["enhanced"]["metric"] > ab["baseline"]["metric"] else "baseline better/equal"
+    logger.info("  → Δwin_rate=%+.1fpp  Δavg_pnl=%+.3f%%  ⇒ %s", d_win, d_pnl, verdict)
+
     # ── Write optimal params to strategy_params.json ─────────────────────────
     sp_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "../config/strategy_params.json"))
     try:
@@ -708,6 +813,13 @@ def main():
             "target_rr": best["target_rr"],
             "train_metrics": {k: best[k] for k in ("trades","wins","stops","win_rate","avg_pnl_pct","total_pnl_pct","metric")},
             "val_metrics": best["val"],
+        },
+        "ab_baseline_vs_enhanced": {
+            "baseline": {k: ab["baseline"][k] for k in ("trades","win_rate","avg_pnl_pct","total_pnl_pct","metric")},
+            "enhanced": {k: ab["enhanced"][k] for k in ("trades","win_rate","avg_pnl_pct","total_pnl_pct","metric")},
+            "delta_win_rate_pp": round(d_win, 2),
+            "delta_avg_pnl_pct": round(d_pnl, 4),
+            "verdict": verdict,
         },
         "top5_train": [{k: r[k] for k in ("scheme","min_score","adx_threshold","rsi_min","stop_mult","target_rr","trades","win_rate","avg_pnl_pct","metric")} for r in top5_train],
         "top5_val": [{k: v[k] for k in ("scheme","min_score","adx_threshold","rsi_min","stop_mult","target_rr")} | {"val": v["val"]} for v in val_results],
