@@ -69,12 +69,6 @@ def intraday_hunt_agent(state: TradingState) -> dict[str, Any]:
         return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="daily_limit_reached",
                                             data={"daily_trades": daily_trades, "max": max_daily})]}
 
-    scored = state.get("scored_opportunities", [])
-    fresh = [s for s in scored if s.get("symbol") and s["symbol"] not in traded_symbols]
-    if not fresh:
-        return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="no_fresh_opportunities",
-                                            data={"traded": sorted(traded_symbols)})]}
-
     regime = state.get("market_regime", "unknown")
     confidence = state.get("market_confidence", 0.0)
     floor = getattr(policy, "confidence_min_trade", 0.65)
@@ -86,6 +80,32 @@ def intraday_hunt_agent(state: TradingState) -> dict[str, Any]:
     if confidence < floor:
         return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="confidence_below_floor",
                                             data={"confidence": confidence, "floor": floor})]}
+
+    scored = list(state.get("scored_opportunities", []) or [])
+    # If pre-market filtered everything out but the regime is now long-favorable,
+    # reconsider the broader watchlist by RE-SCORING each name under the current
+    # (improved) regime — a name just under the bar at a weak open can now clear it.
+    if not scored:
+        watch = state.get("watchlist", []) or []
+        if watch:
+            from autotrader.agents.layer3.opportunity_scoring import rescore_for_regime
+            min_score = getattr(policy, "minimum_score", 62)
+            for w in watch:
+                s = rescore_for_regime(w, regime, confidence)
+                if s >= min_score:
+                    item = dict(w)
+                    item["score"] = s
+                    item["composite_score"] = s
+                    scored.append(item)
+            scored.sort(key=lambda x: x.get("score", 0), reverse=True)
+            if scored:
+                logger.info("[%s] Regime %s (%.0f%%) revived %d watchlist name(s) intraday",
+                            AGENT_NAME, regime, confidence * 100, len(scored))
+
+    fresh = [s for s in scored if s.get("symbol") and s["symbol"] not in traded_symbols]
+    if not fresh:
+        return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="no_fresh_opportunities",
+                                            data={"traded": sorted(traded_symbols)})]}
 
     # Capital tied up in still-open positions is NOT available; only the rest is.
     total_capital = policy.total_capital

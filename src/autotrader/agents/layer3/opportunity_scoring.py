@@ -61,6 +61,44 @@ def _composite_weights(regime: str, confidence: float) -> dict[str, float]:
     return WEIGHTS
 
 
+def _extension_penalty_from_atr(ext_atr: float) -> float:
+    """Same buckets as _extension_penalty, but from a stored extension-in-ATR value."""
+    if ext_atr > 3.0:
+        return 22.0
+    if ext_atr > 2.0:
+        return 14.0
+    if ext_atr > 1.0:
+        return 6.0
+    return 0.0
+
+
+def rescore_for_regime(item: dict, regime: str, confidence: float) -> float:
+    """Recompute a scored candidate's composite under a DIFFERENT regime.
+
+    Used intraday: a name filtered out pre-market (e.g. a weak/bearish open) may
+    clear the bar once the regime improves, because the regime component and the
+    catalyst-relaxation weights change. We reuse the stored per-signal sub-scores
+    (component_scores) so no data re-fetch is needed — only the regime-dependent
+    pieces are recomputed. Returns the new composite (extension penalty preserved).
+    """
+    comps = item.get("component_scores") or {}
+    if not comps:
+        return float(item.get("score", 0) or 0)
+    w = _composite_weights(regime, confidence)
+    regime_s = _market_regime_score(regime, confidence)
+    composite = (
+        regime_s * w["market_regime"]
+        + comps.get("sector_strength", 0) * w["sector_strength"]
+        + comps.get("relative_strength", 0) * w["relative_strength"]
+        + comps.get("volume", 0) * w["volume"]
+        + comps.get("catalyst", 0) * w["catalyst"]
+        + comps.get("technical", 0) * w["technical"]
+        + comps.get("options_sentiment", 0) * w["options_sentiment"]
+    )
+    composite -= _extension_penalty_from_atr(item.get("extension_atr", 0) or 0)
+    return round(composite, 2)
+
+
 def _market_regime_score(regime: str, confidence: float) -> float:
     # Confidence is applied at the composite level; base score reflects regime only
     base = {
@@ -270,6 +308,9 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
             scored.sort(key=lambda x: x["score"], reverse=True)
 
     eligible = [s for s in scored if s["score"] >= policy.minimum_score]
+    # Broader shortlist (pre-eligibility) the intraday hunt can reconsider if the
+    # regime improves during the session — names just under the bar pre-market.
+    watchlist = scored[:max(len(eligible), 10)]
 
     msg = create_message(
         source=AGENT_NAME,
@@ -299,6 +340,7 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
 
     return {
         "scored_opportunities": eligible,
+        "watchlist": watchlist,
         "messages": [msg],
         "audit_trail": [entry],
     }

@@ -109,6 +109,23 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
 
         # Book at the real live price (adverse slippage on the buy).
         fill_price, slip = slipped_fill(live, qty, "BUY", half_spread_bps, impact_bps_per_lakh)
+
+        # Re-anchor stop/targets to the ACTUAL fill, preserving the plan's ATR-based
+        # distances. The plan levels were anchored to the pre-open plan entry; booking
+        # at a different live price would otherwise distort R:R (e.g. a plan T1 only
+        # +1.2% above a higher fill). This keeps the intended risk/reward intact.
+        plan_entry_lvl = plan.get("entry") or 0
+        if plan_entry_lvl > 0:
+            stop_dist = plan_entry_lvl - stop if stop else 0
+            t1_dist = target1 - plan_entry_lvl if target1 else 0
+            t2_dist = target2 - plan_entry_lvl if target2 else 0
+            if stop_dist > 0:
+                stop = round(fill_price - stop_dist, 2)
+            if t1_dist > 0:
+                target1 = round(fill_price + t1_dist, 2)
+            if t2_dist > 0:
+                target2 = round(fill_price + t2_dist, 2)
+
         tag = _idempotency_key(symbol, run_date, fill_price, qty)
         order = {
             "order_id": f"{'DRY' if is_dry_run else 'LIVE'}-{tag}",

@@ -27,7 +27,7 @@ def _session_path(run_date: str) -> Path:
 _PERSIST_KEYS = [
     "run_date", "session_type", "market_regime", "market_confidence",
     "india_vix", "options_pcr", "options_signal", "top_sectors",
-    "scored_opportunities", "trade_plan", "trade_plans",
+    "scored_opportunities", "watchlist", "trade_plan", "trade_plans",
     "orders", "positions", "daily_trades_taken", "daily_pnl",
     "consecutive_losses", "dry_run", "competitor_results",
 ]

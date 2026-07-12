@@ -41,31 +41,50 @@ IST_OFFSET = timedelta(hours=5, minutes=30)
 POLL_INTERVAL_SECONDS = 300  # 5 minutes
 
 
-def is_market_open() -> bool:
-    """Check if NSE market is currently open.
+_HOLIDAYS_CACHE: list[str] | None = None
 
-    Asks Upstox exchange status first (authoritative); falls back to
-    time-based check so the loop keeps working if Upstox is unreachable.
+
+def _is_holiday(day) -> bool:
+    """True if `day` (a date) is a known NSE holiday. Cached for the process.
+
+    If the holiday list can't be fetched, assume NOT a holiday — we'd rather run
+    a no-op loop on a rare unfetchable-holiday than skip a real trading day.
     """
-    try:
-        from autotrader.tools import upstox_data
-        status = upstox_data.get_market_status()
-        if status is not None:
-            return status
-    except Exception:
-        pass
+    global _HOLIDAYS_CACHE
+    if _HOLIDAYS_CACHE is None:
+        try:
+            from autotrader.tools import upstox_data
+            _HOLIDAYS_CACHE = upstox_data.get_market_holidays() or []
+        except Exception:
+            _HOLIDAYS_CACHE = []
+    return day.isoformat() in _HOLIDAYS_CACHE
 
-    # Time-based fallback (IST 09:15 – 15:30)
-    now_utc = datetime.now(timezone.utc)
-    now_ist = now_utc + IST_OFFSET
 
-    if now_ist.weekday() >= 5:  # Weekend
+def is_market_open() -> bool:
+    """Check if NSE is open, treating the IST time window + holiday calendar as
+    the AUTHORITATIVE loop terminator.
+
+    The Upstox live status is used only as an advisory shortcut: if it explicitly
+    says NORMAL_OPEN we're open. But a non-NORMAL_OPEN reading (pre-open auction,
+    a transient CLOSING_SESSION flag, a volatility halt, an unexpected string, or
+    an API hiccup) must NOT break the loop for the rest of the day — as long as
+    we're inside the trading window on a non-holiday weekday, we keep looping.
+    """
+    now_ist = datetime.now(timezone.utc) + IST_OFFSET
+
+    # Hard closers: weekend, holiday, or outside the 09:15–15:30 IST window.
+    if now_ist.weekday() >= 5:
         return False
-
+    if _is_holiday(now_ist.date()):
+        return False
     market_open = now_ist.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MINUTE, second=0, microsecond=0)
     market_close = now_ist.replace(hour=MARKET_CLOSE_HOUR, minute=MARKET_CLOSE_MINUTE, second=0, microsecond=0)
+    if not (market_open <= now_ist <= market_close):
+        return False
 
-    return market_open <= now_ist <= market_close
+    # Inside the window on a trading day → open. (Advisory API check omitted as a
+    # terminator on purpose: a single odd status string must not end the session.)
+    return True
 
 
 def main():

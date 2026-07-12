@@ -43,6 +43,7 @@ class TradingState(TypedDict):
 
     # Layer 3 outputs
     scored_opportunities: list[dict]  # [{symbol, score, component_scores}]
+    watchlist: list[dict]  # broader pre-eligibility shortlist for intraday reconsideration
 
     # Layer 4 outputs
     governance_approved: bool
@@ -121,6 +122,7 @@ def create_initial_state(session_type: str = "pre_market") -> TradingState:
         catalysts=[],
         candidates=[],
         scored_opportunities=[],
+        watchlist=[],
         governance_approved=False,
         governance_reason="",
         risk_passed=False,
