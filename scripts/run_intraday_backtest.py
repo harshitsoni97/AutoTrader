@@ -186,13 +186,19 @@ def main():
     cache = rb.precompute_indicators(all_data, trading_days)
     regime_map = rb.build_regime_map(nifty_rows)
 
-    picks = []  # (day_str, symbol, plan_entry, atr)
+    picks = []  # (trade_day, symbol, plan_entry, atr)
     for di in val_days:
+        if di < 1:
+            continue
+        # NO LOOK-AHEAD: the pre-market plan is built BEFORE today opens, from data
+        # through YESTERDAY's close. So score as of trading_days[di-1] (which holds
+        # yesterday's close as its indicators), then trade trading_days[di] intraday.
+        signal_day = trading_days[di - 1]
         day = trading_days[di]
-        cands = rb.get_day_candidates_from_cache(cache, day, 20, 50)
+        cands = rb.get_day_candidates_from_cache(cache, signal_day, 20, 50)
         if not cands:
             continue
-        reg_label, reg_score, conf = regime_map.get(day, ("range_bound", 60.0, 0.6))
+        reg_label, reg_score, conf = regime_map.get(signal_day, ("range_bound", 60.0, 0.6))
         scored = []
         for c in cands:
             s = rb.composite_score_enhanced(c, reg_label, reg_score, conf)
