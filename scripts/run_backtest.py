@@ -21,6 +21,7 @@ import argparse
 import json
 import logging
 import os
+import random
 import sys
 import time
 from collections import defaultdict
@@ -489,6 +490,30 @@ def composite_score_enhanced(candidate: dict, regime_label: str, regime_score: f
 # Grid search
 # ---------------------------------------------------------------------------
 
+def bootstrap_ci(pnls: list[float], n_boot: int = 2000, seed: int = 42) -> dict:
+    """95% bootstrap CI on the MEAN per-trade P&L, plus P(true mean > 0).
+
+    Resamples the trade P&Ls with replacement n_boot times. A thin edge whose CI
+    straddles 0 (or whose P(>0) is well under ~95%) is NOT distinguishable from
+    noise — this is the guard against trusting an 11-trade 'win'.
+    """
+    k = len(pnls)
+    if k == 0:
+        return {"n": 0, "mean": 0.0, "lo": 0.0, "hi": 0.0, "prob_positive": 0.0}
+    rnd = random.Random(seed)
+    means = []
+    for _ in range(n_boot):
+        means.append(sum(pnls[rnd.randrange(k)] for _ in range(k)) / k)
+    means.sort()
+    return {
+        "n": k,
+        "mean": round(sum(pnls) / k, 4),
+        "lo": round(means[int(0.025 * n_boot)], 4),
+        "hi": round(means[int(0.975 * n_boot)], 4),
+        "prob_positive": round(sum(1 for m in means if m > 0) / n_boot, 4),
+    }
+
+
 def evaluate_scheme(
     all_data: dict[str, list[dict]],
     trading_days: list[str],
@@ -609,6 +634,34 @@ BACKTEST_SYMBOLS = [
     "DLF", "GODREJPROP", "ADANIPORTS", "INDUSINDBK", "BAJFINANCE",
 ]
 
+# Broader, more realistic universe — ~110 liquid NSE large + mid caps across
+# sectors (Nifty 100 + liquid midcaps). Names not present in the instrument map
+# on the target machine are skipped automatically with a warning.
+BACKTEST_SYMBOLS_BROAD = sorted(set(BACKTEST_SYMBOLS + [
+    # Banks / NBFC / Financials
+    "BANKBARODA", "PNB", "CANBK", "FEDERALBNK", "IDFCFIRSTB", "AUBANK", "BANDHANBNK",
+    "CHOLAFIN", "SHRIRAMFIN", "SBICARD", "HDFCLIFE", "SBILIFE", "ICICIPRULI",
+    "ICICIGI", "BAJAJFINSV", "MUTHOOTFIN", "LICHSGFIN", "PFC", "RECLTD",
+    # IT / Digital
+    "LTIM", "PERSISTENT", "COFORGE", "MPHASIS", "OFSS",
+    # Pharma / Health
+    "LUPIN", "TORNTPHARM", "ALKEM", "BIOCON", "ZYDUSLIFE", "APOLLOHOSP", "MAXHEALTH", "LAURUSLABS",
+    # Auto / Ancillary
+    "TVSMOTOR", "ASHOKLEY", "BOSCHLTD", "MOTHERSON", "BALKRISIND", "MRF",
+    # Consumer / FMCG / Retail
+    "GODREJCP", "MARICO", "COLPAL", "TATACONSUM", "VBL", "UNITDSPR", "TITAN",
+    "TRENT", "DMART", "PIDILITIND", "HAVELLS", "VOLTAS", "PAGEIND",
+    # Metals / Mining / Cement
+    "SAIL", "NMDC", "JINDALSTEL", "APLAPOLLO", "ULTRACEMCO", "SHREECEM", "AMBUJACEM", "ACC",
+    # Energy / Power / Infra
+    "POWERGRID", "ADANIENT", "ADANIGREEN", "ADANIPOWER", "TATAPOWER", "GAIL", "IGL", "PETRONET",
+    "HINDPETRO", "OIL", "IRCTC", "IRFC", "CONCOR", "GMRINFRA",
+    # Chemicals / Industrials / Other
+    "SRF", "PIIND", "UPL", "AARTIIND", "DEEPAKNTR", "TATACHEM",
+    "ABB", "CUMMINSIND", "POLYCAB", "DIXON", "ASTRAL", "SUPREMEIND",
+    "INDIGO", "NAUKRI", "ZOMATO", "PAYTM", "JIOFIN", "DABUR",
+]))
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -619,6 +672,11 @@ def main():
                              "(per-day regime + regime-aware weights + extension penalty).")
     parser.add_argument("--no-write", action="store_true",
                         help="Do NOT overwrite config/strategy_params.json (exploratory run).")
+    parser.add_argument("--ab-min-score", type=int, default=60,
+                        help="Common min_score for the baseline-vs-enhanced A/B so neither arm "
+                             "is starved to 0 trades (isolates the formula effect).")
+    parser.add_argument("--universe", choices=["curated", "broad"], default="broad",
+                        help="curated=~44 large caps; broad=~110 liquid large+mid caps (more realistic).")
     args = parser.parse_args()
 
     os.makedirs("reports", exist_ok=True)
@@ -638,11 +696,12 @@ def main():
     with open(map_path) as f:
         full_map: dict = json.load(f)
 
-    instrument_map = {sym: full_map[sym] for sym in BACKTEST_SYMBOLS if sym in full_map}
-    missing = [sym for sym in BACKTEST_SYMBOLS if sym not in full_map]
+    universe = BACKTEST_SYMBOLS_BROAD if args.universe == "broad" else BACKTEST_SYMBOLS
+    instrument_map = {sym: full_map[sym] for sym in universe if sym in full_map}
+    missing = [sym for sym in universe if sym not in full_map]
     if missing:
-        logger.warning("Symbols not in instrument map (will skip): %s", missing)
-    logger.info("Backtest universe: %d symbols", len(instrument_map))
+        logger.warning("Symbols not in instrument map (will skip %d): %s", len(missing), missing)
+    logger.info("Backtest universe: %d symbols (%s)", len(instrument_map), args.universe)
 
     # Fetch data
     all_data = fetch_all_candles(instrument_map, args.months)
@@ -785,24 +844,35 @@ def main():
     # Same best params + validation window; baseline (fixed regime, static
     # weights) vs enhanced (per-day regime + regime-aware catalyst relaxation +
     # extension penalty). This is the walk-forward test of the scoring changes.
-    logger.info("\n=== A/B ON HELD-OUT SET: baseline vs live-logic (enhanced) ===")
+    # Fair A/B: isolate the FORMULA effect by holding a common, sane threshold for
+    # BOTH arms (the winner's tuned min_score can starve the baseline arm to 0
+    # trades — apples to oranges). Everything else (adx/rsi/stop/rr) is held equal.
+    logger.info("\n=== A/B ON HELD-OUT SET: baseline vs live-logic (enhanced), min_score=%d ===",
+                args.ab_min_score)
     ab = {}
     for mode in ("baseline", "enhanced"):
         res = evaluate_scheme(
             all_data, trading_days, val_days,
-            weights=best["weights"], min_score=best["min_score"],
+            weights=best["weights"], min_score=args.ab_min_score,
             adx_threshold=best["adx_threshold"], rsi_min=best["rsi_min"],
             stop_mult=best["stop_mult"], target_rr=best["target_rr"],
             indicator_cache=indicator_cache, mode=mode, regime_map=regime_map,
         )
+        ci = bootstrap_ci([t["pnl_pct"] for t in res.get("trade_log", [])])
+        res["ci"] = ci
         ab[mode] = res
-        logger.info("  %-9s | trades=%d win_rate=%.1f%% avg_pnl=%.3f%% total_pnl=%.2f%% metric=%.4f",
-            mode, res["trades"], res["win_rate"]*100, res["avg_pnl_pct"],
-            res["total_pnl_pct"], res["metric"])
+        logger.info("  %-9s | trades=%d win=%.1f%% avg=%.3f%% total=%.2f%% | "
+                    "95%% CI [%+.3f, %+.3f]%% P(edge>0)=%.0f%%",
+            mode, res["trades"], res["win_rate"]*100, res["avg_pnl_pct"], res["total_pnl_pct"],
+            ci["lo"], ci["hi"], ci["prob_positive"]*100)
     d_win = (ab["enhanced"]["win_rate"] - ab["baseline"]["win_rate"]) * 100
     d_pnl = ab["enhanced"]["avg_pnl_pct"] - ab["baseline"]["avg_pnl_pct"]
     verdict = "ENHANCED better" if ab["enhanced"]["metric"] > ab["baseline"]["metric"] else "baseline better/equal"
     logger.info("  → Δwin_rate=%+.1fpp  Δavg_pnl=%+.3f%%  ⇒ %s", d_win, d_pnl, verdict)
+    ehi = ab["enhanced"]["ci"]
+    sig = "SIGNIFICANT (CI clears 0)" if ehi["lo"] > 0 else "NOT significant (CI straddles 0 — could be noise)"
+    logger.info("  → enhanced edge is %s; P(mean>0)=%.0f%% over %d trades",
+                sig, ehi["prob_positive"]*100, ehi["n"])
 
     # ── Write optimal params to strategy_params.json (opt-in) ────────────────
     # This file is read LIVE by the running agents, so writing it changes trading
@@ -859,11 +929,13 @@ def main():
             "val_metrics": best["val"],
         },
         "ab_baseline_vs_enhanced": {
-            "baseline": {k: ab["baseline"][k] for k in ("trades","win_rate","avg_pnl_pct","total_pnl_pct","metric")},
-            "enhanced": {k: ab["enhanced"][k] for k in ("trades","win_rate","avg_pnl_pct","total_pnl_pct","metric")},
+            "ab_min_score": args.ab_min_score,
+            "baseline": {k: ab["baseline"][k] for k in ("trades","win_rate","avg_pnl_pct","total_pnl_pct","metric","ci")},
+            "enhanced": {k: ab["enhanced"][k] for k in ("trades","win_rate","avg_pnl_pct","total_pnl_pct","metric","ci")},
             "delta_win_rate_pp": round(d_win, 2),
             "delta_avg_pnl_pct": round(d_pnl, 4),
             "verdict": verdict,
+            "enhanced_significant": ab["enhanced"]["ci"]["lo"] > 0,
         },
         "top5_train": [{k: r[k] for k in ("scheme","min_score","adx_threshold","rsi_min","stop_mult","target_rr","trades","win_rate","avg_pnl_pct","metric")} for r in top5_train],
         "top5_val": [{k: v[k] for k in ("scheme","min_score","adx_threshold","rsi_min","stop_mult","target_rr")} | {"val": v["val"]} for v in val_results],
