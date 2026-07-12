@@ -677,6 +677,13 @@ def main():
         ("rs_focus",    {"market_regime":0.15,"sector_strength":0.15,"relative_strength":0.25,"volume":0.15,"catalyst":0.10,"technical":0.15,"options_sentiment":0.05}),
     ]
 
+    # In enhanced mode the composite uses regime-aware weights internally, so it is
+    # INDEPENDENT of the grid's weight scheme — iterating all 5 would be 5× redundant.
+    # Collapse to one so we only vary the params that actually matter (min_score,
+    # adx, rsi, stop, rr).
+    if args.mode == "enhanced":
+        weight_schemes = [("enhanced_live", weight_schemes[0][1])]
+
     min_score_grid   = [55, 60, 65, 70]
     adx_thresh_grid  = [18, 20, 22, 25]
     rsi_min_grid     = [48, 50, 52, 55]
