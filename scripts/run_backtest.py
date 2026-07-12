@@ -613,6 +613,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--months", type=int, default=6, help="Months of history to backtest")
     parser.add_argument("--out", default="reports/backtest_results.json")
+    parser.add_argument("--mode", choices=["baseline", "enhanced"], default="enhanced",
+                        help="Scoring formula to OPTIMIZE under. 'enhanced' = the live logic "
+                             "(per-day regime + regime-aware weights + extension penalty).")
+    parser.add_argument("--no-write", action="store_true",
+                        help="Do NOT overwrite config/strategy_params.json (exploratory run).")
     args = parser.parse_args()
 
     os.makedirs("reports", exist_ok=True)
@@ -684,6 +689,10 @@ def main():
     # Pre-compute all indicators once — grid search then uses the cache (fast)
     indicator_cache = precompute_indicators(all_data, trading_days)
 
+    # Per-day regime (from Nifty) used by the enhanced/live scoring formula.
+    regime_map = build_regime_map(nifty_rows)
+    logger.info("Optimizing under '%s' scoring formula", args.mode)
+
     train_results = []
     combo_num = 0
 
@@ -706,6 +715,8 @@ def main():
                                 stop_mult=stop_m,
                                 target_rr=tgt_rr,
                                 indicator_cache=indicator_cache,
+                                mode=args.mode,
+                                regime_map=regime_map,
                             )
                             train_results.append({
                                 "scheme": scheme_name,
@@ -742,6 +753,8 @@ def main():
             stop_mult=r["stop_mult"],
             target_rr=r["target_rr"],
             indicator_cache=indicator_cache,
+            mode=args.mode,
+            regime_map=regime_map,
         )
         val_results.append({**r, "val": val})
         logger.info("  scheme=%-12s | val trades=%d win_rate=%.1f%% avg_pnl=%.3f%% metric=%.4f",
@@ -765,7 +778,6 @@ def main():
     # weights) vs enhanced (per-day regime + regime-aware catalyst relaxation +
     # extension penalty). This is the walk-forward test of the scoring changes.
     logger.info("\n=== A/B ON HELD-OUT SET: baseline vs live-logic (enhanced) ===")
-    regime_map = build_regime_map(nifty_rows)
     ab = {}
     for mode in ("baseline", "enhanced"):
         res = evaluate_scheme(
@@ -784,30 +796,39 @@ def main():
     verdict = "ENHANCED better" if ab["enhanced"]["metric"] > ab["baseline"]["metric"] else "baseline better/equal"
     logger.info("  → Δwin_rate=%+.1fpp  Δavg_pnl=%+.3f%%  ⇒ %s", d_win, d_pnl, verdict)
 
-    # ── Write optimal params to strategy_params.json ─────────────────────────
+    # ── Write optimal params to strategy_params.json (opt-in) ────────────────
+    # This file is read LIVE by the running agents, so writing it changes trading
+    # behavior immediately. Require --no-write to be ABSENT to touch it, and only
+    # ever auto-tune under the enhanced (live) formula — never clobber live params
+    # with a baseline-optimized grid.
     sp_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "../config/strategy_params.json"))
-    try:
-        with open(sp_path) as f:
-            current_sp = json.load(f)
-    except Exception:
-        current_sp = {}
-
-    current_sp.update({
-        "adx_threshold":   best["adx_threshold"],
-        "rsi_min":         best["rsi_min"],
-        "stop_multiplier": best["stop_mult"],
-        "min_score":       best["min_score"],
-        "target_rr_min":   best["target_rr"],
-        "_backtest_scheme": best["scheme"],
-        "_backtest_win_rate": best["val"]["win_rate"],
-        "_backtest_avg_pnl":  best["val"]["avg_pnl_pct"],
-        "_backtest_trades":   best["val"]["trades"],
-        "_comment": "Auto-tuned by backtest. Walk-forward validated.",
-        "_version": current_sp.get("_version", 1) + 1,
-    })
-    with open(sp_path, "w") as f:
-        json.dump(current_sp, f, indent=2)
-    logger.info("Wrote optimal params to %s", sp_path)
+    if args.no_write:
+        logger.info("--no-write set → NOT touching %s (live params unchanged)", sp_path)
+    elif args.mode != "enhanced":
+        logger.warning("mode=%s → NOT writing live params (only the enhanced/live formula "
+                       "may auto-tune production). Re-run with --mode enhanced to apply.", args.mode)
+    else:
+        try:
+            with open(sp_path) as f:
+                current_sp = json.load(f)
+        except Exception:
+            current_sp = {}
+        current_sp.update({
+            "adx_threshold":   best["adx_threshold"],
+            "rsi_min":         best["rsi_min"],
+            "stop_multiplier": best["stop_mult"],
+            "min_score":       best["min_score"],
+            "target_rr_min":   best["target_rr"],
+            "_backtest_scheme": best["scheme"],
+            "_backtest_win_rate": best["val"]["win_rate"],
+            "_backtest_avg_pnl":  best["val"]["avg_pnl_pct"],
+            "_backtest_trades":   best["val"]["trades"],
+            "_comment": "Auto-tuned by backtest (enhanced/live formula). Walk-forward validated.",
+            "_version": current_sp.get("_version", 1) + 1,
+        })
+        with open(sp_path, "w") as f:
+            json.dump(current_sp, f, indent=2)
+        logger.info("Wrote optimal params to %s", sp_path)
 
     # ── Write full report ─────────────────────────────────────────────────────
     report = {
