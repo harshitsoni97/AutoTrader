@@ -64,17 +64,21 @@ _spec.loader.exec_module(rb)
 from autotrader.tools import upstox_data
 
 
-def simulate_intraday(candles: list[dict], plan_entry: float, atr: float,
-                      stop_mult: float, rr: float, slip_bps: float = 4.0,
+def simulate_intraday(candles: list[dict], plan_entry: float, stop_dist: float,
+                      rr: float, atr_guard: float = 0.0, slip_bps: float = 4.0,
                       max_ext_atr: float = 1.5) -> dict:
-    """Simulate one day's plan→book→manage flow on 30-min candles."""
-    if not candles or atr <= 0 or plan_entry <= 0:
+    """Simulate one day's plan→book→manage flow on 30-min candles.
+
+    stop_dist is the price distance to the stop (T1 = +stop_dist, T2 = +stop_dist·rr),
+    computed by the caller from either daily ATR or an intraday-% of price.
+    atr_guard (if >0) drives the 'don't chase' extension skip at the open.
+    """
+    if not candles or stop_dist <= 0 or plan_entry <= 0:
         return {"outcome": "no_data", "pnl_pct": 0.0}
     candles = sorted(candles, key=lambda c: c["timestamp"])
     open_px = candles[0]["open"]
     slip = slip_bps / 10000.0
 
-    stop_dist = atr * stop_mult
     plan_stop = plan_entry - stop_dist
     plan_t1 = plan_entry + stop_dist
     plan_t2 = plan_entry + stop_dist * rr
@@ -84,7 +88,7 @@ def simulate_intraday(candles: list[dict], plan_entry: float, atr: float,
         return {"outcome": "skip_overextended", "pnl_pct": 0.0}
     if open_px <= plan_stop:
         return {"outcome": "skip_below_stop", "pnl_pct": 0.0}
-    if (open_px - plan_entry) > max_ext_atr * atr:
+    if atr_guard > 0 and (open_px - plan_entry) > max_ext_atr * atr_guard:
         return {"outcome": "skip_extended", "pnl_pct": 0.0}
 
     # Book at the open + adverse slippage; re-anchor levels to the fill.
@@ -157,7 +161,11 @@ def main():
     ap.add_argument("--months", type=int, default=12)
     ap.add_argument("--universe", choices=["curated", "broad"], default="broad")
     ap.add_argument("--min-score", type=int, default=62, help="Eligibility floor (live default).")
-    ap.add_argument("--stop-mult", type=float, default=1.0)
+    ap.add_argument("--level-mode", choices=["daily_atr", "pct"], default="pct",
+                    help="Stop/target scale: daily_atr (=ATR·mult) or pct (=stop_pct%% of price). "
+                         "pct is the right SCALE for a same-day hold.")
+    ap.add_argument("--stop-mult", type=float, default=1.0, help="daily_atr mode: stop = ATR·mult.")
+    ap.add_argument("--stop-pct", type=float, default=0.6, help="pct mode: stop = stop_pct%% of entry.")
     ap.add_argument("--target-rr", type=float, default=1.5)
     ap.add_argument("--slip-bps", type=float, default=4.0)
     ap.add_argument("--out", default="reports/intraday_backtest.json")
@@ -208,48 +216,68 @@ def main():
             continue
         scored.sort(key=lambda x: x[0], reverse=True)
         top = scored[0][1]
-        picks.append((day, top["symbol"], top["close"], top["atr"]))
+        picks.append((day, top["symbol"], top["close"], top["atr"], reg_label))
 
-    logger.info("Picks over validation window: %d", len(picks))
+    logger.info("Picks over validation window: %d  (level-mode=%s)", len(picks), args.level_mode)
 
     # 2. Fetch that day's 30-min candles per pick and simulate both arms.
-    mach_pnls, naive_pnls, skips = [], [], 0
-    trade_log = []
-    for day, sym, plan_entry, atr in picks:
+    LONG_FAV = {"risk_on", "bullish"}
+    rows = []  # per-entered-trade: {regime, bucket, machinery, naive}
+    trade_log, skips = [], 0
+    for day, sym, plan_entry, atr, reg_label in picks:
         ikey = instrument_map.get(sym)
         candles = upstox_data.get_historical_candles(ikey, "minutes", 30, day, day)
         candles = [c for c in (candles or []) if str(c.get("timestamp", "")).startswith(day)]
         if not candles:
             skips += 1
             continue
-        m = simulate_intraday(candles, plan_entry, atr, args.stop_mult, args.target_rr, args.slip_bps)
+        # Stop distance by mode: pct is the right SCALE for a same-day hold;
+        # daily ATR is a full day's range and rarely interacts intraday.
+        if args.level_mode == "pct":
+            stop_dist = plan_entry * args.stop_pct / 100.0
+        else:
+            stop_dist = atr * args.stop_mult
+        m = simulate_intraday(candles, plan_entry, stop_dist, args.target_rr, atr, args.slip_bps)
         n = naive_hold(candles, args.slip_bps)
         if m["outcome"].startswith("skip"):
-            # Machinery declined to enter — that's a real (0-P&L, no-trade) decision;
-            # exclude from the trade sample but record it.
-            trade_log.append({"date": day, "symbol": sym, **m})
+            trade_log.append({"date": day, "symbol": sym, "regime": reg_label, **m})
             continue
-        mach_pnls.append(m["pnl_pct"])
-        naive_pnls.append(n["pnl_pct"])
-        trade_log.append({"date": day, "symbol": sym, "machinery": m["pnl_pct"],
-                          "naive": n["pnl_pct"], "outcome": m["outcome"]})
+        bucket = "long_fav" if reg_label in LONG_FAV else "other"
+        rows.append({"regime": reg_label, "bucket": bucket,
+                     "machinery": m["pnl_pct"], "naive": n["pnl_pct"]})
+        trade_log.append({"date": day, "symbol": sym, "regime": reg_label,
+                          "machinery": m["pnl_pct"], "naive": n["pnl_pct"], "outcome": m["outcome"]})
 
-    logger.info("\n=== INTRADAY BACKTEST (held-out %d days, %s universe) ===",
-                len(val_days), args.universe)
+    logger.info("\n=== INTRADAY BACKTEST (held-out %d days, %s universe, %s levels) ===",
+                len(val_days), args.universe, args.level_mode)
     logger.info("  entries taken=%d | skipped-at-open=%d | no-candle=%d",
-                len(mach_pnls), sum(1 for t in trade_log if t.get("outcome", "").startswith("skip")), skips)
-    mach = _summarize(mach_pnls, "machinery")
-    naive = _summarize(naive_pnls, "naive")
-    if mach_pnls and naive_pnls:
-        edge = [m - n for m, n in zip(mach_pnls, naive_pnls)]
-        _summarize(edge, "Δ(mach-naive)")
+                len(rows), sum(1 for t in trade_log if t.get("outcome", "").startswith("skip")), skips)
+
+    def _seg(subset, tag):
+        mp = [r["machinery"] for r in subset]
+        np_ = [r["naive"] for r in subset]
+        seg = {}
+        seg["machinery"] = _summarize(mp, f"{tag} machinery")
+        seg["naive"] = _summarize(np_, f"{tag} naive")
+        if mp and np_:
+            seg["delta"] = _summarize([a - b for a, b in zip(mp, np_)], f"{tag} Δ(mach-naive)")
+        return seg
+
+    logger.info("── ALL REGIMES ──")
+    overall = _seg(rows, "all")
+    logger.info("── LONG-FAVORABLE (risk_on/bullish) ──")
+    long_fav = _seg([r for r in rows if r["bucket"] == "long_fav"], "longfav")
+    logger.info("── OTHER (bearish/range_bound) ──")
+    other = _seg([r for r in rows if r["bucket"] == "other"], "other")
 
     report = {"run_date": date.today().isoformat(), "months": args.months,
               "universe": args.universe, "symbols": len(instrument_map),
-              "val_days": len(val_days), "picks": len(picks),
-              "params": {"min_score": args.min_score, "stop_mult": args.stop_mult,
+              "val_days": len(val_days), "picks": len(picks), "entries": len(rows),
+              "params": {"min_score": args.min_score, "level_mode": args.level_mode,
+                         "stop_mult": args.stop_mult, "stop_pct": args.stop_pct,
                          "target_rr": args.target_rr, "slip_bps": args.slip_bps},
-              "machinery": mach, "naive": naive, "trade_log": trade_log}
+              "segments": {"all": overall, "long_favorable": long_fav, "other": other},
+              "trade_log": trade_log}
     with open(args.out, "w") as f:
         json.dump(report, f, indent=2)
     logger.info("Report → %s", args.out)
