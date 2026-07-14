@@ -12,8 +12,10 @@ EnvironmentFile=/home/ubuntu/AutoTrader/.env
 #   ssh -L 8733:127.0.0.1:8733 ubuntu@<host>
 # Or set TOKEN_INTAKE_HOST=0.0.0.0 AND TOKEN_INTAKE_PIN=<pin> in .env (riskier).
 ExecStart=/home/ubuntu/AutoTrader/venv/bin/python /home/ubuntu/AutoTrader/scripts/token_intake.py
-# HARD close the port after 20 min even if no token is submitted (safety).
-RuntimeMaxSec=1200
+# Stay open from 08:15 IST (timer) until ~10:15 IST = 1h after the 09:15 open, so a
+# missed pre-open submit can still be recovered mid-morning. Closes EARLY the moment
+# a token is saved; this is only the hard backstop for the no-submit case. 2h = 7200s.
+RuntimeMaxSec=7200
 StandardOutput=append:/home/ubuntu/AutoTrader/logs/token_intake.log
 StandardError=append:/home/ubuntu/AutoTrader/logs/token_intake.log
 # Do NOT restart — one window per timer firing.
