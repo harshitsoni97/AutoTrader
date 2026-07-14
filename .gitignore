@@ -7,3 +7,9 @@ reports/trade_journal.jsonl
 reports/pick_attribution.jsonl
 reports/catalyst_seen.json
 reports/pending_reprice.json
+
+# Daily OAuth trading token (written by token_intake.py — never commit)
+upstox_access_token
+*upstox_access_token*
+.autotrader/
+logs/token_intake.log

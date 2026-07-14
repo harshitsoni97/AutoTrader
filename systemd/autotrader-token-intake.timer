@@ -1,0 +1,12 @@
+[Unit]
+Description=AutoTrader Token Intake window (08:15 IST = 02:45 UTC, before the open)
+Requires=autotrader-token-intake.service
+
+[Timer]
+# Opens the intake port each trading morning, ~1h before the intraday loop starts
+# (intraday fires 03:40 UTC). The service self-closes on token save or after 20 min.
+OnCalendar=Mon..Fri 02:45:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target
