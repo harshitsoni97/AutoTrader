@@ -61,6 +61,30 @@ def _composite_weights(regime: str, confidence: float) -> dict[str, float]:
     return WEIGHTS
 
 
+def _overbought_penalty(rsi: float) -> float:
+    """Composite penalty for an EXTREME-overbought RSI (the stretched tail only).
+
+    Motivated by repeated live evidence (ANANDRATHI RSI 82 → −1.25%, GODREJPROP
+    RSI 83, both flagged by every LLM) and the backtest showing selection over-
+    weights extended momentum. This is deliberately soft and only bites the tail
+    (RSI ≥ 75) so it does NOT fight normal trend momentum (RSI 60–70 stays clean);
+    it just stops an RSI-82 name from topping the list where the extension-over-
+    VWAP penalty can't see it (a stock grinding up with a rising VWAP).
+
+      rsi < 75  → 0
+      75–80     → 3
+      80–85     → 7
+      ≥ 85      → 12
+    """
+    if rsi >= 85:
+        return 12.0
+    if rsi >= 80:
+        return 7.0
+    if rsi >= 75:
+        return 3.0
+    return 0.0
+
+
 def _extension_penalty_from_atr(ext_atr: float) -> float:
     """Same buckets as _extension_penalty, but from a stored extension-in-ATR value."""
     if ext_atr > 3.0:
@@ -96,6 +120,7 @@ def rescore_for_regime(item: dict, regime: str, confidence: float) -> float:
         + comps.get("options_sentiment", 0) * w["options_sentiment"]
     )
     composite -= _extension_penalty_from_atr(item.get("extension_atr", 0) or 0)
+    composite -= _overbought_penalty(item.get("rsi", 50) or 50)
     return round(composite, 2)
 
 
@@ -255,10 +280,13 @@ def opportunity_scoring_agent(state: TradingState) -> dict[str, Any]:
         )
         # Extension penalty — dock names already run too far above VWAP (chasing).
         ext_pen, ext_atr = _extension_penalty(candidate)
-        composite = round(composite - ext_pen, 2)
-        if ext_pen:
-            logger.info("[%s] %s extension penalty -%.0f (%.1f ATR above VWAP)",
-                        AGENT_NAME, symbol, ext_pen, ext_atr)
+        # Extreme-overbought dampener — dock the stretched-RSI tail (what the
+        # extension-over-VWAP penalty misses on a grind-up).
+        ob_pen = _overbought_penalty(candidate.get("rsi", 50) or 50)
+        composite = round(composite - ext_pen - ob_pen, 2)
+        if ext_pen or ob_pen:
+            logger.info("[%s] %s penalties: extension -%.0f (%.1f ATR>VWAP), overbought -%.0f (RSI %.0f)",
+                        AGENT_NAME, symbol, ext_pen, ext_atr, ob_pen, candidate.get("rsi", 50) or 50)
 
         scored.append({
             "symbol": symbol,

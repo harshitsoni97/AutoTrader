@@ -471,8 +471,8 @@ def _ext_penalty(close: float, vwap: float, atr: float) -> float:
 def composite_score_enhanced(candidate: dict, regime_label: str, regime_score: float,
                              confidence: float, sector_score: float = 60.0,
                              rs_score: float = 60.0, options_score: float = 50.0) -> float:
-    """Live-parity composite: per-day regime + regime-aware weights + extension penalty."""
-    from autotrader.agents.layer3.opportunity_scoring import _composite_weights
+    """Live-parity composite: per-day regime + regime-aware weights + extension + overbought penalty."""
+    from autotrader.agents.layer3.opportunity_scoring import _composite_weights, _overbought_penalty
     w = _composite_weights(regime_label, confidence)
     base = (
         regime_score       * w["market_regime"]
@@ -483,7 +483,9 @@ def composite_score_enhanced(candidate: dict, regime_label: str, regime_score: f
         + candidate["technical_score"] * w["technical"]
         + options_score    * w["options_sentiment"]
     )
-    return base - _ext_penalty(candidate.get("close", 0), candidate.get("vwap", 0), candidate.get("atr", 0))
+    base -= _ext_penalty(candidate.get("close", 0), candidate.get("vwap", 0), candidate.get("atr", 0))
+    base -= _overbought_penalty(candidate.get("rsi", 50) or 50)
+    return base
 
 
 # ---------------------------------------------------------------------------
