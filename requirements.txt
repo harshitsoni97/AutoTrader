@@ -31,3 +31,4 @@ langchain-google-genai>=1.0.0
 # langchain-groq>=0.1.0
 # Ollama (local)
 # langchain-ollama>=0.1.0
+webauthn>=2.0.0
