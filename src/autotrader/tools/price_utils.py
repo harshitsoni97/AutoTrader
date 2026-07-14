@@ -32,10 +32,18 @@ def live_ltp(symbol: str) -> float | None:
     try:
         from autotrader.tools import upstox_data
         data = upstox_data.get_ltp([ikey])
-        if data and ikey in data:
-            price = float(data[ikey])
-            if price > 0:
-                return price
+        if data:
+            price = data.get(ikey)
+            # Upstox v3 market-quote/ltp keys the RESPONSE by trading symbol
+            # (e.g. "NSE_EQ|ANANDRATHI") while we request by the ISIN-based
+            # instrument key ("NSE_EQ|INE..."). They never match for equities, so
+            # a single-key request's value is unambiguous — use it regardless of
+            # the response's key format. (Indices happen to match, which is why
+            # this bug hid: the entry agent got "no live price" for every stock.)
+            if price is None and len(data) == 1:
+                price = next(iter(data.values()))
+            if price and float(price) > 0:
+                return float(price)
     except Exception as exc:
         logger.warning("live_ltp_failed", symbol=symbol, error=str(exc))
     return None
