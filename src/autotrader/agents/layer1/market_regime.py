@@ -25,6 +25,36 @@ from autotrader.core.snapshot import stamp as _snapshot_stamp
 
 AGENT_NAME = "MarketRegimeAgent"
 
+# Canonical regime labels the rest of the system gates on. The LLM enrichment can
+# return free text ("mild_risk_on", "cautiously optimistic", …) which matches NONE
+# of the coded sets and silently disables the hunt / catalyst relaxation / blocks.
+_CANONICAL_REGIMES = {
+    "risk_on", "bullish", "cautiously_bullish", "range_bound",
+    "bearish", "risk_off", "high_volatility",
+}
+
+
+def _normalize_regime(label: str, fallback: str) -> str:
+    """Map any LLM regime label onto the canonical set. Keep `fallback` (the
+    deterministic regime) if the label is unmappable — never let free text through."""
+    if not label:
+        return fallback
+    l = label.strip().lower().replace("-", "_").replace(" ", "_")
+    if l in _CANONICAL_REGIMES:
+        return l
+    if any(w in l for w in ("range", "neutral", "sideways", "choppy", "consolidat")):
+        return "range_bound"
+    if "volatil" in l or "high_vol" in l:
+        return "high_volatility"
+    soft = any(w in l for w in ("mild", "cautious", "weak", "moderate", "slight", "tepid", "modest"))
+    if "bear" in l or "risk_off" in l:
+        return "risk_off" if ("strong" in l or "severe" in l or "risk_off" in l) else "bearish"
+    if "bull" in l or "risk_on" in l:
+        if soft:
+            return "cautiously_bullish"
+        return "risk_on" if ("strong" in l or "risk_on" in l) else "bullish"
+    return fallback
+
 
 def _pct_change(rows: list[dict], lookback: int = 5) -> float:
     if len(rows) < 2:
@@ -184,13 +214,18 @@ def _llm_enrich_regime(
     )
     try:
         result: RegimeEnrichment = chain.invoke(prompt)
+        canonical = _normalize_regime(result.regime_label, regime)
         enrichment = {
-            "llm_regime_label": result.regime_label,
+            "llm_regime_label": result.regime_label,       # raw, for audit
+            "regime_normalized": canonical,
             "llm_confidence": result.adjusted_confidence,
             "llm_key_factors": result.key_factors,
             "llm_trading_implication": result.trading_implication,
         }
-        return result.regime_label, result.adjusted_confidence, enrichment
+        if canonical != result.regime_label:
+            logger.info("[%s] Normalized LLM regime '%s' → '%s'",
+                        AGENT_NAME, result.regime_label, canonical)
+        return canonical, result.adjusted_confidence, enrichment
     except Exception as exc:
         logger.warning("[%s] LLM regime enrichment failed: %s", AGENT_NAME, exc)
         return regime, confidence, {}
