@@ -65,7 +65,9 @@ ORB_SYMBOLS = [
 
 
 def simulate_orb(candles: list[dict], or_min: int, interval: int, vol_mult: float,
-                 rr: float, slip_bps: float, exit_mode: str = "target") -> dict | None:
+                 rr: float, slip_bps: float, exit_mode: str = "target",
+                 stop_mode: str = "or_low", stop_mult: float = 1.0,
+                 cost_bps: float = 0.0) -> dict | None:
     """One day of ORB. candles = that day's intraday bars, ascending. None if no setup."""
     if not candles or len(candles) < (or_min // interval) + 2:
         return None
@@ -91,21 +93,27 @@ def simulate_orb(candles: list[dict], or_min: int, interval: int, vol_mult: floa
         return {"setup": False, "pnl_pct": None}
 
     entry = or_high * (1 + slip)          # enter on the break, adverse slippage
-    stop = or_low
+    # Stop placement: OR low (tight), a multiple of OR range below entry (wider), or none.
+    if stop_mode == "none":
+        stop = None
+    elif stop_mode == "range_mult":
+        stop = entry - stop_mult * or_rng
+    else:  # or_low
+        stop = or_low
     target = entry + rr * or_rng
+    cost = cost_bps / 10000.0             # round-trip transaction cost (STT/brokerage/etc.)
+
+    def _ret(exit_px):
+        return round((exit_px / entry - 1) * 100 - cost * 100, 4)
 
     for c in candles[entry_idx + 1:]:
-        if c["low"] <= stop:              # worst-case: stop before target within a bar
-            exit_px = stop * (1 - slip)
-            return {"setup": True, "outcome": "stop", "pnl_pct": round((exit_px / entry - 1) * 100, 4),
+        if stop is not None and c["low"] <= stop:   # worst-case: stop before target in a bar
+            return {"setup": True, "outcome": "stop", "pnl_pct": _ret(stop * (1 - slip)),
                     "entry": entry, "or_rng": or_rng}
-        # exit_mode 'close' lets winners run to the close (stop still active, no fixed target)
         if exit_mode == "target" and c["high"] >= target:
-            exit_px = target * (1 - slip)
-            return {"setup": True, "outcome": "target", "pnl_pct": round((exit_px / entry - 1) * 100, 4),
+            return {"setup": True, "outcome": "target", "pnl_pct": _ret(target * (1 - slip)),
                     "entry": entry, "or_rng": or_rng}
-    exit_px = candles[-1]["close"] * (1 - slip)   # square off at close
-    return {"setup": True, "outcome": "close", "pnl_pct": round((exit_px / entry - 1) * 100, 4),
+    return {"setup": True, "outcome": "close", "pnl_pct": _ret(candles[-1]["close"] * (1 - slip)),
             "entry": entry, "or_rng": or_rng}
 
 
@@ -170,6 +178,11 @@ def main():
     ap.add_argument("--slip-bps", type=float, default=3.0)
     ap.add_argument("--exit", choices=["target", "close"], default="target",
                     help="target=fixed rr target; close=hold to close (let winners run, stop still on)")
+    ap.add_argument("--stop-mode", choices=["or_low", "range_mult", "none"], default="or_low",
+                    help="or_low=stop at OR low; range_mult=entry-mult*OR range; none=no stop")
+    ap.add_argument("--stop-mult", type=float, default=1.0, help="range_mult: stop = entry - mult*OR range")
+    ap.add_argument("--cost-bps", type=float, default=0.0,
+                    help="round-trip transaction cost in bps (e.g. 10 = 0.10%% STT/brokerage/impact)")
     ap.add_argument("--universe", choices=["orb", "broad"], default="orb")
     ap.add_argument("--out", default="reports/orb_backtest.json")
     args = ap.parse_args()
@@ -198,7 +211,8 @@ def main():
             if nv_all is not None:
                 uncond_naive.append(nv_all)          # every day → pure long-beta
             res = simulate_orb(dc, args.or_min, args.interval, args.vol_mult, args.rr,
-                               args.slip_bps, exit_mode=args.exit)
+                               args.slip_bps, exit_mode=args.exit, stop_mode=args.stop_mode,
+                               stop_mult=args.stop_mult, cost_bps=args.cost_bps)
             if not res or not res.get("setup"):
                 continue
             trades.append({"date": d, "symbol": sym, "pnl": res["pnl_pct"], "outcome": res["outcome"]})
