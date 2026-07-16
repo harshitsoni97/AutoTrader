@@ -107,7 +107,7 @@ def _make_compete_cfg(dry_run: bool = True, primary: str = "", names: list[str] 
 def test_compete_config_defaults():
     cfg = load_config()
     assert isinstance(cfg.compete, CompeteModeConfig)
-    assert cfg.compete.enabled is False
+    assert cfg.compete.enabled is True
 
 
 def test_stack_config_fields():

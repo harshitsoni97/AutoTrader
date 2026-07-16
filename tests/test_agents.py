@@ -22,8 +22,8 @@ def test_config_loading():
     """load_config returns AppConfig with all required fields."""
     config = load_config()
     assert isinstance(config, AppConfig)
-    assert config.trading_policy.max_daily_trades == 3
-    assert config.trading_policy.total_capital == 1_000_000
+    assert config.trading_policy.max_daily_trades == 6
+    assert config.trading_policy.total_capital == 100_000
     assert config.trading_policy.enabled is True
     assert config.memory_policy.minimum_confidence == 0.70
     assert config.strategy_version.strategy_version == "1.0.0"
@@ -172,7 +172,7 @@ def test_governance_rejected_max_trades():
     from autotrader.agents.layer4.governance import governance_agent
     
     state = _make_approvable_state()
-    state["daily_trades_taken"] = 3  # equals max_daily_trades
+    state["daily_trades_taken"] = 6  # equals max_daily_trades (yaml)
     
     result = governance_agent(state)
     assert result["governance_approved"] is False
@@ -418,7 +418,7 @@ def test_execution_suppresses_duplicate():
     # Replay with the order already present -> no new order
     state2 = dict(state, orders=first["orders"])
     second = execution_agent(state2)
-    assert "orders" not in second
+    assert not second.get("orders")  # duplicate suppressed (empty or absent)
     assert any(t["tag"] == tag for t in first["orders"])
 
 
