@@ -155,60 +155,59 @@ def dry_run_pnl_agent(state: TradingState) -> dict[str, Any]:
         half_spread_bps, impact_bps_per_lakh = 4.0, 1.5
 
     outcomes = []
-    total_assumed_pnl = 0.0
-
     run_date = state.get("run_date") or None
+
+    # Realized P&L is ALREADY known at close: the intraday MonitoringAgent booked
+    # every stop/T1/T2 exit at live prices during the session and accumulated it into
+    # state["daily_pnl"] (it reduces qty on a partial, so the running sum is exact).
+    # Trust that — no candle re-simulation — and only mark STILL-OPEN positions to the
+    # close. This makes the summary COMPLETE at 15:35 IST instead of deferring to next
+    # morning waiting on 30-min candles that Upstox publishes late in the evening.
+    from autotrader.tools.price_utils import live_ltp
+
+    realized_total = round(state.get("daily_pnl", 0.0) or 0.0, 2)
+    open_mtm = 0.0
     for pos in positions:
         symbol = pos.get("symbol", "")
-        ohlc = _day_ohlc(symbol, run_date)
-        if ohlc is None:
-            logger.warning("no_day_ohlc", symbol=symbol)
+        status = (pos.get("status") or "OPEN").upper()
+        entry = pos.get("entry_price") or pos.get("assumed_entry") or 0
+        qty = pos.get("qty", 0) or 0
+
+        if status in ("STOPPED", "TARGET2_HIT", "CLOSED"):
+            # Closed intraday — its realized P&L is already inside realized_total.
             outcomes.append({
-                "symbol": symbol,
-                "pnl": 0.0,
-                "scenario": "price_unavailable",
-                "entry": pos.get("assumed_entry") or pos.get("entry_price"),
-                "stop": pos.get("stop"),
-                "target1": pos.get("target1"),
-                "target2": pos.get("target2"),
-                "qty": pos.get("qty"),
+                "symbol": symbol, "pnl": pos.get("realized_pnl", 0.0),
+                "scenario": "realized_" + status.lower(), "eod_price": pos.get("exit_price"),
+                "fill_price": entry, "entry": entry, "stop": pos.get("stop"),
+                "target1": pos.get("target1"), "target2": pos.get("target2"), "qty": qty,
+                "pattern": pos.get("pattern", "N/A"), "score": pos.get("score"),
             })
             continue
 
-        result = _simulate_pnl(pos, ohlc, half_spread_bps, impact_bps_per_lakh)
-        total_assumed_pnl += result["pnl"]
-        eod = result.get("eod_price", ohlc["close"])
-
+        # Still open at EOD — mark remaining qty to the close. Live LTP returns the
+        # closing price right at 15:35 IST; fall back to the day's candle close.
+        close_px = live_ltp(symbol)
+        if not close_px or close_px <= 0:
+            ohlc = _day_ohlc(symbol, run_date)
+            close_px = ohlc["close"] if ohlc else None
+        if not close_px or close_px <= 0:
+            outcomes.append({
+                "symbol": symbol, "pnl": 0.0, "scenario": "price_unavailable",
+                "entry": entry, "stop": pos.get("stop"), "target1": pos.get("target1"),
+                "target2": pos.get("target2"), "qty": qty,
+            })
+            continue
+        mtm = (close_px - entry) * qty
+        open_mtm += mtm
         outcomes.append({
-            "symbol": symbol,
-            "pnl": result["pnl"],
-            "scenario": result["scenario"],
-            "eod_price": eod,
-            "fill_price": result.get("fill_price"),
-            "day_open": ohlc["open"],
-            "day_high": ohlc["high"],
-            "day_low": ohlc["low"],
-            "entry": pos.get("assumed_entry") or pos.get("entry_price"),
-            "stop": pos.get("stop"),
-            "target1": pos.get("target1"),
-            "target2": pos.get("target2"),
-            "qty": pos.get("qty"),
-            "pattern": pos.get("pattern", "N/A"),
-            "score": pos.get("score"),
-            "target2_rr": pos.get("target2_rr"),
-            "atr_used": pos.get("atr_used"),
-            "rr": round((pos.get("target1", 0) - (pos.get("assumed_entry") or pos.get("entry_price", 0))) /
-                        max(0.01, (pos.get("assumed_entry") or pos.get("entry_price", 1)) - pos.get("stop", 0)), 2),
+            "symbol": symbol, "pnl": round(mtm, 2), "scenario": "marked_to_close",
+            "eod_price": round(close_px, 2), "fill_price": entry, "entry": entry,
+            "stop": pos.get("stop"), "target1": pos.get("target1"), "target2": pos.get("target2"),
+            "qty": qty, "pattern": pos.get("pattern", "N/A"), "score": pos.get("score"),
         })
+        logger.info("dry_run_mark_to_close", symbol=symbol, entry=entry, close=close_px, mtm=round(mtm, 2))
 
-        logger.info(
-            "dry_run_outcome",
-            symbol=symbol,
-            entry=pos.get("assumed_entry") or pos.get("entry_price"),
-            eod=eod,
-            scenario=result["scenario"],
-            pnl=result["pnl"],
-        )
+    total_assumed_pnl = round(realized_total + open_mtm, 2)
 
     # If any position couldn't be priced (candles not published yet), the day is
     # incomplete — skip journaling and flag it so post-market can defer to the
