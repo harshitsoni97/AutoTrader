@@ -32,6 +32,7 @@ trading_policy:
   confidence_full_size: 0.75         # at/above this, full size
   confidence_floor_size_mult: 0.4    # size multiplier at 0.65
   max_entry_extension_atr: 1.5       # skip booking if live > entry + this×ATR (don't chase)
+  max_entry_stop_retrace: 0.5        # skip a long already retraced >50% from plan-entry to stop
   blocked_regimes:
     - "high_volatility_bear"
     - "risk_off_extreme"

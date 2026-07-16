@@ -49,6 +49,7 @@ class TradingPolicy(BaseModel):
     # At the open, don't book a plan whose live price has already run more than
     # this many ATR above the planned entry (chasing an extended move).
     max_entry_extension_atr: float = 1.5
+    max_entry_stop_retrace: float = 0.5
 
 
 class MemoryBackendConfig(BaseModel):

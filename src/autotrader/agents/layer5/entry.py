@@ -94,6 +94,21 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
                                      data={"symbol": symbol, "live": live, "stop": stop}))
             logger.info("[%s] Skip %s — already at/below stop (live %.2f <= %.2f)", AGENT_NAME, symbol, live, stop)
             continue
+        # Near-stop guard: a long whose live price has already retraced most of the way
+        # from the plan entry toward the stop is a setup that's ALREADY failing — booking
+        # it leaves almost no room and terrible R:R (7/16 GODREJPROP: booked 66% of the
+        # way to the stop, stopped out 15 min later for -238). Skip past a threshold.
+        plan_entry_lvl = plan.get("entry", 0) or 0
+        max_retrace = getattr(policy, "max_entry_stop_retrace", 0.5)
+        if plan_entry_lvl and stop and plan_entry_lvl > stop and live < plan_entry_lvl:
+            retrace = (plan_entry_lvl - live) / (plan_entry_lvl - stop)
+            if retrace > max_retrace:
+                audit.append(audit_entry(agent=AGENT_NAME, action="skip_near_stop",
+                                         data={"symbol": symbol, "live": live, "plan_entry": plan_entry_lvl,
+                                               "stop": stop, "retrace": round(retrace, 2)}))
+                logger.info("[%s] Skip %s — retraced %.0f%% to stop before entry (live %.2f, plan %.2f, stop %.2f)",
+                            AGENT_NAME, symbol, retrace * 100, live, plan_entry_lvl, stop)
+                continue
         # Extension guard: don't chase a name that has already run too far above
         # the planned entry at the open (real-desk "don't chase" rule).
         plan_entry = plan.get("entry", 0) or 0
