@@ -66,7 +66,7 @@ from autotrader.tools import upstox_data
 
 def simulate_intraday(candles: list[dict], plan_entry: float, stop_dist: float,
                       rr: float, atr_guard: float = 0.0, slip_bps: float = 4.0,
-                      max_ext_atr: float = 1.5) -> dict:
+                      max_ext_atr: float = 1.5, max_stop_retrace: float = 0.5) -> dict:
     """Simulate one day's plan→book→manage flow on 30-min candles.
 
     stop_dist is the price distance to the stop (T1 = +stop_dist, T2 = +stop_dist·rr),
@@ -90,6 +90,11 @@ def simulate_intraday(candles: list[dict], plan_entry: float, stop_dist: float,
         return {"outcome": "skip_below_stop", "pnl_pct": 0.0}
     if atr_guard > 0 and (open_px - plan_entry) > max_ext_atr * atr_guard:
         return {"outcome": "skip_extended", "pnl_pct": 0.0}
+    # Near-stop guard (mirrors entry.py): skip a long already retraced past halfway
+    # from plan entry to the stop before we'd book it.
+    if plan_entry > plan_stop and open_px < plan_entry:
+        if (plan_entry - open_px) / (plan_entry - plan_stop) > max_stop_retrace:
+            return {"outcome": "skip_near_stop", "pnl_pct": 0.0}
 
     # Book at the open + adverse slippage; re-anchor levels to the fill.
     fill = open_px * (1 + slip)
