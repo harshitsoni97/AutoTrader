@@ -65,7 +65,7 @@ ORB_SYMBOLS = [
 
 
 def simulate_orb(candles: list[dict], or_min: int, interval: int, vol_mult: float,
-                 rr: float, slip_bps: float) -> dict | None:
+                 rr: float, slip_bps: float, exit_mode: str = "target") -> dict | None:
     """One day of ORB. candles = that day's intraday bars, ascending. None if no setup."""
     if not candles or len(candles) < (or_min // interval) + 2:
         return None
@@ -99,7 +99,8 @@ def simulate_orb(candles: list[dict], or_min: int, interval: int, vol_mult: floa
             exit_px = stop * (1 - slip)
             return {"setup": True, "outcome": "stop", "pnl_pct": round((exit_px / entry - 1) * 100, 4),
                     "entry": entry, "or_rng": or_rng}
-        if c["high"] >= target:
+        # exit_mode 'close' lets winners run to the close (stop still active, no fixed target)
+        if exit_mode == "target" and c["high"] >= target:
             exit_px = target * (1 - slip)
             return {"setup": True, "outcome": "target", "pnl_pct": round((exit_px / entry - 1) * 100, 4),
                     "entry": entry, "or_rng": or_rng}
@@ -167,6 +168,8 @@ def main():
     ap.add_argument("--vol-mult", type=float, default=1.2, help="breakout volume vs OR avg")
     ap.add_argument("--rr", type=float, default=1.0, help="target = entry + rr*OR range")
     ap.add_argument("--slip-bps", type=float, default=3.0)
+    ap.add_argument("--exit", choices=["target", "close"], default="target",
+                    help="target=fixed rr target; close=hold to close (let winners run, stop still on)")
     ap.add_argument("--universe", choices=["orb", "broad"], default="orb")
     ap.add_argument("--out", default="reports/orb_backtest.json")
     args = ap.parse_args()
@@ -183,19 +186,23 @@ def main():
     logger.info("ORB universe: %d symbols | interval=%dm OR=%dm vol×%.1f rr=%.1f",
                 len(imap), args.interval, args.or_min, args.vol_mult, args.rr)
 
-    trades = []   # (date, symbol, pnl, outcome)
-    naive = []    # (date, naive_pnl)
+    trades = []          # ORB setups: (date, symbol, pnl, outcome)
+    naive = []           # buy-OR-end/hold-close on the SAME breakout days
+    uncond_naive = []    # buy-OR-end/hold-close on EVERY day (long-beta baseline)
     for si, (sym, ikey) in enumerate(imap.items(), 1):
         rows = _fetch_intraday(ikey, args.months, args.interval)
         days = _by_day(rows)
         logger.info("  [%d/%d] %s: %d days", si, len(imap), sym, len(days))
         for d, dc in days.items():
-            res = simulate_orb(dc, args.or_min, args.interval, args.vol_mult, args.rr, args.slip_bps)
+            nv_all = naive_from_or(dc, args.or_min, args.interval, args.slip_bps)
+            if nv_all is not None:
+                uncond_naive.append(nv_all)          # every day → pure long-beta
+            res = simulate_orb(dc, args.or_min, args.interval, args.vol_mult, args.rr,
+                               args.slip_bps, exit_mode=args.exit)
             if not res or not res.get("setup"):
                 continue
             trades.append({"date": d, "symbol": sym, "pnl": res["pnl_pct"], "outcome": res["outcome"]})
-            nv = naive_from_or(dc, args.or_min, args.interval, args.slip_bps)
-            naive.append({"date": d, "pnl": nv})
+            naive.append({"date": d, "pnl": nv_all})  # only breakout days
 
     logger.info("\n=== ORB BACKTEST (%d symbols, %d mo, %d setups) ===", len(imap), args.months, len(trades))
     if not trades:
@@ -204,10 +211,18 @@ def main():
     pnls = [t["pnl"] for t in trades]
     npnls = [n["pnl"] for n in naive if n["pnl"] is not None]
 
-    orb_all = _summarize(pnls, "ORB (all)")
-    _summarize(npnls, "naive (all)")
+    orb_all = _summarize(pnls, f"ORB exit={args.exit}")
+    _summarize(npnls, "naive (breakout days)")
+    _summarize(uncond_naive, "naive (ALL days=beta)")
     if pnls and npnls and len(pnls) == len(npnls):
         _summarize([a - b for a, b in zip(pnls, npnls)], "Δ(ORB-naive)")
+    # Signal-vs-beta: do breakout days beat the all-day average? (mean diff, not paired)
+    if npnls and uncond_naive:
+        import statistics as _st
+        edge = _st.mean(npnls) - _st.mean(uncond_naive)
+        logger.info("  breakout-day mean %.3f%% vs all-day mean %.3f%%  → signal edge %+.3f%% "
+                    "(does the breakout FILTER beat pure long-beta?)",
+                    _st.mean(npnls), _st.mean(uncond_naive), edge)
 
     # Train/val stability split (first 70% of days vs last 30%).
     split = int(len(trades) * 0.7)
