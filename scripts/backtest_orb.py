@@ -128,11 +128,15 @@ def naive_from_or(candles: list[dict], or_min: int, interval: int, slip_bps: flo
     return round((candles[-1]["close"] * (1 - slip) / fill - 1) * 100, 4)
 
 
+# Upstox caps intraday (minute) history at ~4-5 months; requesting older just 400s.
+_INTRADAY_HISTORY_CAP_DAYS = 130
+
+
 def _fetch_intraday(ikey: str, months: int, interval: int) -> list[dict]:
     """Fetch intraday candles over `months`, chunked monthly (intraday range caps)."""
     today = date.today()
     out: list[dict] = []
-    start = today - timedelta(days=months * 31)
+    start = today - timedelta(days=min(months * 31, _INTRADAY_HISTORY_CAP_DAYS))
     cur = start
     while cur < today:
         nxt = min(cur + timedelta(days=30), today)
