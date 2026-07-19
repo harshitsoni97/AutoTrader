@@ -2,7 +2,7 @@
 # DISABLED by default. Flip enabled: true to paper-trade it (dry-run).
 # Validated config: OR=15m, vol_mult>=1.5, wide 2x-range stop, hold-to-close.
 orb:
-  enabled: false
+  enabled: true
   or_min: 15
   interval: 5
   vol_mult: 1.5
