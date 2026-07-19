@@ -197,6 +197,23 @@ class UniverseConfig(BaseModel):
     max_total: int = 80
 
 
+class ORBConfig(BaseModel):
+    """Opening-Range-Breakout strategy — the one backtest-validated intraday edge.
+
+    Default DISABLED so it never disturbs the running system; flip enabled=true to
+    paper-trade it. Params are the validated config (OR=15m, vol>=1.5, wide stop).
+    """
+    enabled: bool = False
+    or_min: int = 15                 # opening-range minutes
+    interval: int = 5                # candle minutes
+    vol_mult: float = 1.5            # breakout volume vs OR-avg
+    stop_range_mult: float = 2.0     # stop = entry - mult x OR range (wide, tail-only)
+    max_positions: int = 3           # concurrent ORB positions cap
+    risk_pct: float = 0.5            # % of capital risked per trade (position sizing)
+    squareoff_ist: str = "15:15"     # hold-to-close: force-exit before this IST time
+    universe: list[str] = Field(default_factory=list)  # empty → use a built-in liquid set
+
+
 class PlatformConfig(BaseModel):
     trading_policy: TradingPolicy = Field(default_factory=TradingPolicy)
     memory_policy: MemoryPolicy = Field(default_factory=MemoryPolicy)
@@ -207,6 +224,7 @@ class PlatformConfig(BaseModel):
     notifications: NotificationConfig = Field(default_factory=NotificationConfig)
     compete: CompeteModeConfig = Field(default_factory=CompeteModeConfig)
     universe: UniverseConfig = Field(default_factory=UniverseConfig)
+    orb: ORBConfig = Field(default_factory=ORBConfig)
 
 
 # Alias used by tests and scripts
@@ -233,6 +251,9 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     broker_data = _load_yaml(root / "broker_config.yaml").get("broker", {})
     notif_data = _load_yaml(root / "notifications.yaml").get("notifications", {})
     universe_data = _load_yaml(root / "universe.yaml").get("universe", {})
+    orb_data = _load_yaml(root / "orb.yaml").get("orb", {})
+    if os.getenv("ORB_ENABLED") is not None:
+        orb_data["enabled"] = os.getenv("ORB_ENABLED", "false").lower() == "true"
 
     # Environment variable overrides for key settings
     if os.getenv("TRADING_ENABLED") is not None:
@@ -271,4 +292,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         notifications=NotificationConfig(**notif_data),
         compete=compete_cfg,
         universe=UniverseConfig(**universe_data),
+        orb=ORBConfig(**orb_data),
     )
