@@ -112,7 +112,7 @@ def get_full_quote(instrument_keys: list[str]) -> dict[str, dict] | None:
     Returns {instrument_key_or_symbol: {open, high, low, close, last_price, volume}}.
     """
     keys_param = ",".join(instrument_keys)
-    url = f"{BASE_URL}/v3/market-quote/quotes"
+    url = f"{BASE_URL}/v2/market-quote/quotes"   # full quote (OHLC+volume) is v2, not v3
     data = _get(url, params={"instrument_key": keys_param})
     if data is None:
         return None
