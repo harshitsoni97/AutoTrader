@@ -58,6 +58,8 @@ def orb_scan_agent(state: TradingState) -> dict[str, Any]:
     now_ist = datetime.now(timezone.utc) + _IST
     open_ist = now_ist.replace(hour=9, minute=15, second=0, microsecond=0)
     if now_ist < open_ist + timedelta(minutes=orb.or_min):
+        logger.info("[%s] before OR window (now %s IST, OR closes %02d:%02d)", AGENT_NAME,
+                    now_ist.strftime("%H:%M"), 9, 15 + orb.or_min)
         return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="before_or_window", data={})]}
 
     from autotrader.tools import upstox_data
@@ -70,19 +72,26 @@ def orb_scan_agent(state: TradingState) -> dict[str, Any]:
 
     plans = []
     slots = orb.max_positions - len(open_positions)
+    scanned = 0
+    with_candles = 0        # heartbeat: is the intraday fetch returning data live?
+    breakouts = 0
     for sym in universe:
         if slots <= 0:
             break
         if sym in traded:
             continue
+        scanned += 1
         ikey = _instrument_key(sym)
         if not ikey:
             continue
         candles = upstox_data.get_historical_candles(ikey, "minutes", orb.interval, day, day)
         candles = [c for c in (candles or []) if str(c.get("timestamp", "")).startswith(day)]
+        if candles:
+            with_candles += 1
         sig = orb_breakout_signal(candles, orb.or_min, orb.interval, orb.vol_mult, orb.stop_range_mult)
         if not sig:
             continue
+        breakouts += 1
 
         live = live_ltp(sym) or sig["breakout_close"]
         stop_dist = live - sig["stop"]
@@ -107,9 +116,14 @@ def orb_scan_agent(state: TradingState) -> dict[str, Any]:
         logger.info("[%s] ORB breakout %s — entry %.2f stop %.2f qty %d (OR %.2f-%.2f)",
                     AGENT_NAME, sym, live, sig["stop"], qty, sig["or_low"], sig["or_high"])
 
+    # Per-cycle heartbeat — proves the agent ran and whether the live intraday candle
+    # fetch is returning data (with_candles) vs coming back empty (fetch problem).
+    logger.info("[%s] scan: %d symbols, %d with candles, %d breakout(s)",
+                AGENT_NAME, scanned, with_candles, breakouts)
+
     if not plans:
         return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="no_orb_breakouts",
-                                            data={"scanned": len(universe)})]}
+                                            data={"scanned": scanned, "with_candles": with_candles})]}
     return {
         "trade_plan": plans[0],
         "trade_plans": (state.get("trade_plans", []) or []) + plans,
