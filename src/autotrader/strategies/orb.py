@@ -32,6 +32,49 @@ def opening_range(candles: list[dict], or_min: int, interval: int) -> dict | Non
             "or_avg_vol": avg_vol, "n_or": n_or}
 
 
+def capture_opening_range(quote: dict, or_min: int, interval: int) -> dict:
+    """Snapshot the opening range from a full-quote at ~OR-close time.
+
+    At OR-close (e.g. 09:30 for or_min=15) the quote's day high/low IS the OR
+    high/low, and its cumulative volume is the OR volume. Store this to detect
+    breakouts on later snapshots. n_or bars → per-bar avg volume for the filter.
+    """
+    n_or = max(1, or_min // interval)
+    return {
+        "or_high": quote["high"], "or_low": quote["low"],
+        "or_avg_vol": quote.get("volume", 0) / n_or,
+        "last_cum_vol": quote.get("volume", 0),
+        "signaled": False,
+    }
+
+
+def snapshot_breakout(orb_state: dict, quote: dict, vol_mult: float = 1.5,
+                      stop_range_mult: float = 2.0) -> tuple[dict | None, dict]:
+    """Detect a fresh breakout from a full-quote snapshot; returns (signal|None, new_state).
+
+    Breakout = last_price > OR-high AND this bar's volume (cumulative delta since the
+    last snapshot ≈ one 5-min bar) > vol_mult × OR per-bar avg volume. Fires once
+    (signaled flag). Same economics as the candle-based backtest, from live snapshots.
+    """
+    cum = quote.get("volume", 0)
+    bar_vol = max(0, cum - orb_state.get("last_cum_vol", cum))
+    st = {**orb_state, "last_cum_vol": cum}
+    if st.get("signaled"):
+        return None, st
+    or_high, or_low = st["or_high"], st["or_low"]
+    or_rng = or_high - or_low
+    if or_rng <= 0:
+        return None, st
+    if quote.get("last_price", 0) > or_high and bar_vol > vol_mult * max(1.0, st["or_avg_vol"]):
+        st = {**st, "signaled": True}
+        return {
+            "signal": "ORB_LONG", "or_high": or_high, "or_low": or_low, "or_rng": or_rng,
+            "entry_ref": or_high, "stop": round(or_high - stop_range_mult * or_rng, 2),
+            "stop_range_mult": stop_range_mult, "breakout_price": quote["last_price"],
+        }, st
+    return None, st
+
+
 def orb_breakout_signal(candles: list[dict], or_min: int = 15, interval: int = 5,
                         vol_mult: float = 1.5, stop_range_mult: float = 2.0) -> dict | None:
     """Fresh long ORB breakout on the MOST RECENT closed bar, else None.
