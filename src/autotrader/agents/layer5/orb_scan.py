@@ -84,7 +84,9 @@ def orb_scan_agent(state: TradingState) -> dict[str, Any]:
         ikey = _instrument_key(sym)
         if not ikey:
             continue
-        candles = upstox_data.get_historical_candles(ikey, "minutes", orb.interval, day, day)
+        # The current day's candles come from the INTRADAY endpoint — the historical
+        # endpoint returns nothing for today (this is why ORB never fired on 7/20).
+        candles = upstox_data.get_intraday_candles(ikey, "minutes", orb.interval)
         candles = [c for c in (candles or []) if str(c.get("timestamp", "")).startswith(day)]
         if candles:
             with_candles += 1

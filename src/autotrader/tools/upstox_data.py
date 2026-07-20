@@ -185,6 +185,33 @@ def get_historical_candles(
     return result if result else None
 
 
+def get_intraday_candles(instrument_key: str, unit: str, interval: int) -> list[dict] | None:
+    """Fetch the CURRENT DAY's OHLCV candles from Upstox's intraday endpoint.
+
+    The historical-candle endpoint does NOT serve today's forming candles — that data
+    is only on /v3/historical-candle/intraday/. Same response shape and dict format.
+    Use this for anything that needs today's intraday bars (e.g. the live ORB scan).
+    """
+    encoded_key = quote(instrument_key, safe="")
+    url = f"{BASE_URL}/v3/historical-candle/intraday/{encoded_key}/{unit}/{interval}"
+    data = _get(url)
+    if data is None:
+        return None
+    raw = data.get("data", {}) if isinstance(data, dict) else {}
+    candles = raw.get("candles", [])
+    if not isinstance(candles, list):
+        return None
+    result = []
+    for c in candles:
+        if len(c) < 6:
+            continue
+        result.append({
+            "timestamp": str(c[0]), "open": float(c[1]), "high": float(c[2]),
+            "low": float(c[3]), "close": float(c[4]), "volume": int(c[5]),
+        })
+    return result if result else None
+
+
 # ---------------------------------------------------------------------------
 # 4. Nifty daily data
 # ---------------------------------------------------------------------------
