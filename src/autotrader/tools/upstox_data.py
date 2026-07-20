@@ -102,6 +102,37 @@ def get_ltp(instrument_keys: list[str]) -> dict[str, float] | None:
 # 2. VIX
 # ---------------------------------------------------------------------------
 
+def get_full_quote(instrument_keys: list[str]) -> dict[str, dict] | None:
+    """Full market quote per instrument: day OHLC + cumulative volume + last price.
+
+    Unlike the candle endpoints (which are empty outside the live session), this
+    behaves like LTP — it returns the current/last session's data any time. Used as
+    the reliable live source for ORB's opening range (day high/low at ~09:30 = the OR)
+    and volume conviction (cumulative volume delta between cycles).
+    Returns {instrument_key_or_symbol: {open, high, low, close, last_price, volume}}.
+    """
+    keys_param = ",".join(instrument_keys)
+    url = f"{BASE_URL}/v3/market-quote/quotes"
+    data = _get(url, params={"instrument_key": keys_param})
+    if data is None:
+        return None
+    raw = data.get("data", {}) if isinstance(data, dict) else {}
+    result = {}
+    for key, val in raw.items():
+        if not isinstance(val, dict):
+            continue
+        ohlc = val.get("ohlc", {}) or {}
+        result[key.replace(":", "|")] = {
+            "open": float(ohlc.get("open", 0) or 0),
+            "high": float(ohlc.get("high", 0) or 0),
+            "low": float(ohlc.get("low", 0) or 0),
+            "close": float(ohlc.get("close", 0) or 0),
+            "last_price": float(val.get("last_price", 0) or 0),
+            "volume": int(val.get("volume", 0) or 0),
+        }
+    return result if result else None
+
+
 def get_vix() -> dict[str, float] | None:
     """Return {"vix": float, "vix_prev": float} or None on failure."""
     vix_key = "NSE_INDEX|India VIX"
