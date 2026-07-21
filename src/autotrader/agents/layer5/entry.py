@@ -52,11 +52,11 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
 
     # Enforce the confidence floor at booking time too (defense in depth — a plan
     # from a saved session must not book below the floor).
+    # The confidence floor gates COMPOSITE plans (regime-conviction driven). It is
+    # applied per-plan below so it does NOT block ORB plans — an ORB breakout is a
+    # self-contained edge that doesn't depend on the regime-confidence number.
     confidence = state.get("market_confidence", 0.0)
     floor = getattr(policy, "confidence_min_trade", 0.65)
-    if confidence and confidence < floor:
-        return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="skip_below_confidence_floor",
-                                            data={"confidence": confidence, "floor": floor})]}
 
     is_dry_run = state.get("dry_run", True)
     run_date = state.get("run_date", "")
@@ -78,6 +78,14 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
         stop = plan.get("stop", 0)
         target1 = plan.get("target1", 0)
         target2 = plan.get("target2", 0)
+        is_orb = plan.get("strategy") == "ORB"
+
+        # Composite plans respect the regime-confidence floor; ORB plans don't (a
+        # volume-confirmed breakout is an edge on its own terms).
+        if not is_orb and confidence and confidence < floor:
+            audit.append(audit_entry(agent=AGENT_NAME, action="skip_below_confidence_floor",
+                                     data={"symbol": symbol, "confidence": confidence, "floor": floor}))
+            continue
 
         live = live_ltp(symbol)
         if live is None or live <= 0:
