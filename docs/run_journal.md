@@ -5,6 +5,32 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-07-22 — ORB's FIRST PROFITABLE TRADING DAY ✅✅
+
+The validated edge booked and made money live for the first time. Regime was only
+cautiously_bullish 57% (below the composite floor, so the composite booked nothing) —
+these are pure ORB trades, held to close:
+
+| Symbol | Fill → Close | P&L |
+|---|---|---|
+| POWERGRID | 287.5 → 289.3 | +₹202 |
+| DIVISLAB | 7345.1 → 7386.5 | +₹83 |
+| NTPC | 349.7 → 350.5 | +₹85 |
+
+**Day: +₹370, 3/3 winners.** The full chain worked: full-quote OR capture → breakout
+detection → confidence-floor exemption → EntryAgent books → hold-to-close → post-market
+marks to close. From "no edge + can't book" to a profitable ORB day.
+
+Bug fixed same day: the compete hypothetical monitor spammed ~200 duplicate
+"AJANTPHARM STOP HIT" messages (every cycle ×3 stacks) because competitor_results
+(carrying the stop_hit flag) wasn't persisted across intraday cycles — added it to the
+loop's state carry-over.
+
+Note: 1 day / 3 trades is not proof — ORB needs many sessions across regimes. But it's
+the first live, profitable run of a backtest-validated edge. Keep logging.
+
+---
+
 ## 2026-07-16 — FIRST FULLY-EXECUTING SESSION ✅ (booking validated)
 
 **Milestone:** the `live_ltp` key-mismatch fix is validated end-to-end. For the first

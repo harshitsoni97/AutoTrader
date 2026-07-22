@@ -160,6 +160,9 @@ def main():
                 "daily_trades_taken": result.get("daily_trades_taken", state.get("daily_trades_taken", 0)),
                 "daily_pnl": result.get("daily_pnl", state.get("daily_pnl", 0.0)),
                 "consecutive_losses": result.get("consecutive_losses", state.get("consecutive_losses", 0)),
+                # Carry compete flags (stop_hit/target*_hit) so the hypothetical monitor
+                # doesn't re-alert the same exit EVERY cycle (the 200-message spam on 7/22).
+                "competitor_results": result.get("competitor_results", state.get("competitor_results", [])),
             })
             # Persist so post-market prices the actually-booked positions.
             try:
