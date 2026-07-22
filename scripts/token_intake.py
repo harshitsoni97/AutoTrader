@@ -211,6 +211,10 @@ class Handler(BaseHTTPRequestHandler):
             elif not BOOTSTRAP_PIN or (body.get("pin", "") or "").strip() != BOOTSTRAP_PIN:
                 self._json(403, {"error": "bootstrap PIN required to add a device"})
                 return
+            if wa.at_capacity():
+                self._json(403, {"error": f"passkey limit reached ({wa.max_credentials()} enrolled) — "
+                                          "delete one to add another"})
+                return
             opts_json, challenge = wa.begin_registration()
             _STATE["reg_challenge"] = challenge
             self._json(200, json.loads(opts_json))

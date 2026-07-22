@@ -74,6 +74,22 @@ def is_registered() -> bool:
     return len(_load()) > 0
 
 
+def max_credentials() -> int:
+    """Hard cap on enrolled passkeys (default 2 — e.g. two users/devices)."""
+    try:
+        return max(1, int(os.getenv("WEBAUTHN_MAX_CREDENTIALS", "2")))
+    except ValueError:
+        return 2
+
+
+def credential_count() -> int:
+    return len(_load())
+
+
+def at_capacity() -> bool:
+    return credential_count() >= max_credentials()
+
+
 # ── Registration ceremony ────────────────────────────────────────────────────
 
 def begin_registration() -> tuple[str, bytes]:
