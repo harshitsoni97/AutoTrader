@@ -98,6 +98,16 @@ def main():
     from autotrader.tools.notifications import get_notifier
     notifier = get_notifier(config.notifications)
 
+    # Idempotency guard: if a timer restart or `Persistent=true` catch-up re-runs
+    # post-market for a date whose FINAL summary already went out, don't re-send
+    # (this caused the triple 7/22 summary at 12:21/22/23 AM). A "pending" (pricing
+    # incomplete) send is NOT recorded, so the later real summary still goes through.
+    _sent_flag = Path("reports") / f"summary_sent_{run_date}.flag"
+    if _sent_flag.exists():
+        logger.warning("daily_summary_already_sent_skipping", run_date=run_date)
+        print(f"Daily summary already sent for {run_date} — skipping duplicate.")
+        return result
+
     # End-of-day summary. If pricing was incomplete (candles not published yet),
     # defer: record the day for re-pricing at the next pre-market instead of
     # sending a false ₹0 summary.
@@ -123,6 +133,12 @@ def main():
             "trade_outcomes": result.get("trade_outcomes", []),
             "journal_total": result.get("journal_total", 0),
         })
+        # Record that the FINAL summary went out so a restart can't re-send it.
+        try:
+            _sent_flag.parent.mkdir(parents=True, exist_ok=True)
+            _sent_flag.write_text(f"sent {run_date}\n")
+        except Exception as exc:
+            logger.warning("summary_sent_flag_write_failed", error=str(exc))
 
     # Compete leaderboard — which stack made/lost most today
     competitor_results = result.get("competitor_results", [])
