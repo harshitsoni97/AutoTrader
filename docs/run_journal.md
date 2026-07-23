@@ -5,6 +5,30 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-07-23 — ORB day 2: a LOSING day ❌ (expected variance)
+
+Bearish tape — exactly where a long-only breakout strategy bleeds. 4 breakouts
+detected → 4 trades booked (100% scan→book conversion; plumbing clean):
+
+| Symbol | Outcome | P&L |
+|---|---|---|
+| DLF | STOP (full ~1R) | −₹538 |
+| ITC | small loss | −₹18 |
+| HCLTECH | tiny win | +₹7 |
+| INFY | win | +₹76 |
+
+**Day: −₹473, 1W/3L.** DLF broke its OR-high, failed, and reversed straight into
+the wide 2×OR stop — the classic false-breakout on a down day. Nothing broke: ORB
+is long-only, so a bearish session is its designed weakness, not a bug.
+
+**2-day tally: +₹370 / −₹473 = −₹103** (across ~4W/1 big-L). Far too small a sample
+to judge vs the backtest's +0.29%/trade over ~130 days. Keep logging toward ~15–20
+trades before a live bootstrap CI. What to watch: how ORB does across regimes — we
+now have one bullish-ish (+) and one bearish (−) day, consistent with a long-only
+breakout's shape.
+
+---
+
 ## 2026-07-22 — ORB's FIRST PROFITABLE TRADING DAY ✅✅
 
 The validated edge booked and made money live for the first time. Regime was only
