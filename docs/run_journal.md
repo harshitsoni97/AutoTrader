@@ -5,6 +5,31 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-07-24 — ORB green on a risk_off/bearish day ✅ (+₹50)
+
+Composite booked NOTHING (`Eligible opportunities: 0` — floor correctly gated the
+composite in risk_off 62%). All trades are pure ORB, held-to-close:
+
+| Symbol | Fill → Close | P&L |
+|---|---|---|
+| ITC | 282.0 → 284.0 | +₹225 |
+| NTPC | 349.3 → 347.7 | −₹123 |
+| ADANIPORTS | 1776.4 → 1772.1 | −₹51 |
+
+**Day: +₹50, 1W/2L — winner covered both losers.** Notable vs 7/23: same bearish
+regime family, opposite outcome. 7/23 died on one big −538 stop; here the small
+losers stayed small and ITC carried it. That's the variance we're sampling.
+
+**`max_positions=3` cap fired:** 4 breakouts detected, 3 booked — the 4th was
+capped, NOT a book failure (matches ORBConfig.max_positions=3). Composite/ORB
+separation is clean: floor gates composite, ORB books independently.
+
+Infra: idempotency guard held — ONE daily summary at 11:05 AM, no triple-send.
+
+**3-day tally: +₹370 / −₹473 / +₹50 = −₹53.** Still tiny sample; keep logging.
+
+---
+
 ## 2026-07-23 — ORB day 2: a LOSING day ❌ (expected variance)
 
 Bearish tape — exactly where a long-only breakout strategy bleeds. 4 breakouts
