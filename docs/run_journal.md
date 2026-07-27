@@ -5,6 +5,34 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-07-27 — ORB green (+₹109); winner ran, losers cut small ✅
+
+Composite again booked NOTHING (`Eligible opportunities: 0`). Pure ORB, held-to-close:
+
+| Symbol | Fill → Close | P&L |
+|---|---|---|
+| SUNPHARMA | 1951.8 → 1973.0 | +₹297 |
+| HCLTECH | 1297.4 → 1294.9 | −₹37 |
+| BHARTIARTL | 1915.6 → 1904.0 | −₹151 |
+
+**Day: +₹109, 1W/2L.** Textbook ORB payoff: one clean trend (SUNPHARMA +297) paid
+for two small false-breakout fades. You don't win the count, you win the magnitude.
+
+**Operator note — "2 negative stocks in a bullish market."** Correct observation, and
+it's the core ORB lesson: ORB is a PER-STOCK breakout bet, not an index-direction bet.
+A green index tilts follow-through odds but doesn't stop individual names from breaking
+their OR-high and fading. That's WHY the wide stop + hold-the-winner shape matters:
+HCLTECH/BHARTIARTL faded but stayed small; SUNPHARMA trended and carried the day.
+
+**Regime-detection MISS (no cost, but real):** MarketRegime called bearish 66%
+pre-market / range_bound by close, but the tape was bullish per the operator. Cost
+nothing today (composite floor-gated → 0 books; ORB is regime-agnostic), but it's a
+genuine Layer-1 error worth watching — if we ever regime-gate ORB, this would bite.
+
+**4-day tally: +₹370 / −₹473 / +₹50 / +₹109 = +₹56 (net positive), 13 trades.**
+
+---
+
 ## 2026-07-24 — ORB green on a risk_off/bearish day ✅ (+₹50)
 
 Composite booked NOTHING (`Eligible opportunities: 0` — floor correctly gated the
