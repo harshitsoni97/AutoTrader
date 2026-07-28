@@ -5,6 +5,43 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-07-28 — best day (+₹499); composite ENGAGED on bullish 91% ✅✅
+
+First day the composite cleared the floor and booked — regime bullish **91%** (VIX
+12.7, PCR 1.13), `Eligible opportunities: 5`, 2 composite plans (HCLTECH, BAJAJ-AUTO).
+
+| Symbol | Source | Fill → Close | P&L |
+|---|---|---|---|
+| BAJAJ-AUTO | composite plan | 11198.7 → T2 11309 | **+₹418 (realized T2)** |
+| DLF | ORB | 657.4 → 663.5 | +₹167 |
+| GODREJPROP | ORB | 2132.0 → 2144.4 | +₹37 |
+| INFY | ORB | 1111.9 → 1105.0 | −₹124 |
+
+**Day: +₹499, 3W/1L.** BAJAJ-AUTO ran to T2 and realized +418 — first composite-plan
+winner to actually close a target live. ORB names added +80 net on top.
+
+### Notes to self (operator said "make a note")
+1. **We MISSED our own top pick.** HCLTECH was the #1 composite score (74.6) AND the
+   unanimous compete pick — and it hit TARGET 1 **+3.15%** (1295.90→1336.70) in the
+   hypothetical monitor. But there is NO live HCLTECH entry notification → we did not
+   book the biggest winner on the board. Plan stop was ₹1289.12 vs entry ₹1295.90 —
+   only ₹6.78 risk (very tight). Likely the entry gapped up past the plan and the
+   near-stop/too-far-from-plan guard skipped it, OR it never pulled back to the entry.
+   **ACTION: check logs/intraday.log for HCLTECH on 7/28 — why no book?** If the guard
+   is rejecting clean gap-up-and-go winners, that's a real cost (the guard was built to
+   avoid GODREJPROP-style collapses, but it may be too aggressive on strong opens).
+2. **Instrument map missing `MM`** — pre-market warned it's not in
+   config/upstox_instruments.json → gets ₹0 P&L. **ACTION: run
+   `python3 scripts/update_instruments.py` on OCI to refresh (currently 2412 symbols).**
+3. **Sample now mixes composite + ORB.** Prior days were pure ORB (composite gated out
+   by low-confidence regimes). Today's high-confidence bullish let composite book, so
+   the running tally is no longer ORB-only. Keep the ORB-only vs composite P&L separable
+   when we run the bootstrap CI — don't pool them.
+
+**5-day tally: +₹370 / −₹473 / +₹50 / +₹109 / +₹499 = +₹555, 17 trades.**
+
+---
+
 ## 2026-07-27 — ORB green (+₹109); winner ran, losers cut small ✅
 
 Composite again booked NOTHING (`Eligible opportunities: 0`). Pure ORB, held-to-close:
