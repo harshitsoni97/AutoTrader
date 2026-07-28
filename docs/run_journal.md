@@ -38,6 +38,20 @@ winner to actually close a target live. ORB names added +80 net on top.
    the running tally is no longer ORB-only. Keep the ORB-only vs composite P&L separable
    when we run the bootstrap CI — don't pool them.
 
+### ACTUAL TAPE 7/28 (checked post-close — regime was WRONG)
+Nifty **−0.04%** (−10.6 → 23,985), Sensex −0.09% — essentially FLAT. Breadth
+NEGATIVE: 1,539 adv vs **2,543 decl** (3:2 down). The ONLY strength was Nifty IT
+**+3.2%** (HCLTECH/TCS/TechM led). So:
+- Regime said "bullish 91%" → index flat + negative breadth. **Layer-1 over-called
+  bullishness — 2nd miss in 2 days** (7/27 called bearish, was bullish). Hypothesis:
+  low VIX (12.7) + narrow IT-sector strength is being read as broad-market bullish.
+  Regime is tracking a SECTOR, not the index/breadth. Worth a Layer-1 look.
+- The HCLTECH miss is WORSE than it looked: it was our top pick AND in the single
+  leading sector (IT +3.2%) AND rallied +3.15% — correct stock-selection on a
+  −breadth day, and the entry guard didn't book it.
+- +₹499 long-only on a 3:2-decliners tape = our names landed right, partly luck
+  given the regime miss. Don't over-credit the composite for one flat-tape day.
+
 **5-day tally: +₹370 / −₹473 / +₹50 / +₹109 / +₹499 = +₹555, 17 trades.**
 
 ---
