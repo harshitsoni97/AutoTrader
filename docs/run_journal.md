@@ -5,6 +5,50 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-07-31 — LOST −₹303 on a +0.7% broad UP day ❌ (stale-sector flaw exposed)
+
+Regime risk_on 100% — and this time the regime was RIGHT: Nifty **+0.7%** (24,317),
+breadth **POSITIVE 1,497 adv vs 835 decl** (~2:1 up). A day where buying almost
+anything worked. **We lost −₹303.** Why: our selection concentrated in the WORST
+sector.
+
+| Symbol | Source | Result | P&L |
+|---|---|---|---|
+| SUNPHARMA | composite | T2 hit | +₹181 |
+| ONGC | ORB | flat | +₹24 |
+| ADANIPORTS | ORB | flat | −₹15 |
+| TATASTEEL | ORB | flat | −₹28 |
+| WIPRO (IT) | **composite #1 (85.2)** | STOPPED | **−₹215** |
+| ETERNAL | composite | STOPPED | **−₹342** |
+
+**Day: −₹303, 2W/4L on a day the market rose 0.7% with 2:1 breadth.**
+
+### THE FLAW — stale-sector momentum (7/28 vs 7/31 is the proof)
+Actual leaders 7/31 were **Financials + Autos**; **IT was the WORST** sector (Infosys
+−3.6%, HCLTECH/TCS/TechM all down). Our #1 pick was **WIPRO (IT)**. Pre-market ranked
+"Top sectors: IT, Pharma, Midcap" — IT top — because IT LED the day before (7/28,
++3.2%). The scorer ranks sectors on TRAILING strength and walked into the rotation.
+
+| Date | Regime call | Reality | Top pick | IT that day | Pick result |
+|---|---|---|---|---|---|
+| 7/28 | bullish (WRONG) | flat, −breadth | HCLTECH (IT) | **led +3.2%** | won +3.15% |
+| 7/31 | risk_on (RIGHT) | +0.7%, +breadth | WIPRO (IT) | **worst −3.6%** | STOPPED −2.5% |
+
+Composite picked IT BOTH days. It's momentum-chasing on yesterday's sector leader with
+no rotation/breadth awareness. On 7/31 that meant longing the one sector being sold on
+an up day — losing money the broad tape was handing out for free.
+**ACTION (code-diagnosable now): does Layer-1/scoring rank sectors on trailing
+strength? Feed it (a) market breadth (adv/decl) and (b) SAME-DAY sector rotation, not
+prior-day momentum. This is likely the same root cause as the 7/28 regime miss.**
+
+Reentry churn also reappeared: WIPRO was RE-booked live at 7:21 (DRY-RE) at exactly the
+plan entry right after SUNPHARMA T1, then stopped 5 min later (−215) — redeploying
+freed capital into a losing IT name. Same churn flagged 7/16.
+
+**6-day tally: +₹370 / −₹473 / +₹50 / +₹109 / +₹499 / −₹303 = +₹252, 23 trades.**
+
+---
+
 ## 2026-07-28 — best day (+₹499); composite ENGAGED on bullish 91% ✅✅
 
 First day the composite cleared the floor and booked — regime bullish **91%** (VIX
