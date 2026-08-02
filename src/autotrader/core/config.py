@@ -214,6 +214,22 @@ class ORBConfig(BaseModel):
     universe: list[str] = Field(default_factory=list)  # empty → use a built-in liquid set
 
 
+class SectorGateConfig(BaseModel):
+    """Intraday sector gate for COMPOSITE plans.
+
+    Composite plans are formed pre-market on TRAILING sector momentum (yesterday's
+    leader). If that sector is being SOLD today, we shouldn't long into it — the
+    7/31 WIPRO/IT loss (top pick booked while IT was the worst sector, -215). At
+    book time (intraday) we check the sector INDEX's same-day open->last move and
+    skip the entry if it's below `min_sector_pct`. Fail-open: an unavailable read
+    never blocks a book. ORB plans are exempt (they confirm via their own breakout).
+
+    Default DISABLED so it never disturbs the running system; flip enabled=true.
+    """
+    enabled: bool = False
+    min_sector_pct: float = -0.4    # skip long if sector index is below this % on the day
+
+
 class PlatformConfig(BaseModel):
     trading_policy: TradingPolicy = Field(default_factory=TradingPolicy)
     memory_policy: MemoryPolicy = Field(default_factory=MemoryPolicy)
@@ -225,6 +241,7 @@ class PlatformConfig(BaseModel):
     compete: CompeteModeConfig = Field(default_factory=CompeteModeConfig)
     universe: UniverseConfig = Field(default_factory=UniverseConfig)
     orb: ORBConfig = Field(default_factory=ORBConfig)
+    sector_gate: SectorGateConfig = Field(default_factory=SectorGateConfig)
 
 
 # Alias used by tests and scripts
@@ -254,6 +271,9 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     orb_data = _load_yaml(root / "orb.yaml").get("orb", {})
     if os.getenv("ORB_ENABLED") is not None:
         orb_data["enabled"] = os.getenv("ORB_ENABLED", "false").lower() == "true"
+    sector_gate_data = _load_yaml(root / "sector_gate.yaml").get("sector_gate", {})
+    if os.getenv("SECTOR_GATE_ENABLED") is not None:
+        sector_gate_data["enabled"] = os.getenv("SECTOR_GATE_ENABLED", "false").lower() == "true"
 
     # Environment variable overrides for key settings
     if os.getenv("TRADING_ENABLED") is not None:
@@ -293,4 +313,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         compete=compete_cfg,
         universe=UniverseConfig(**universe_data),
         orb=ORBConfig(**orb_data),
+        sector_gate=SectorGateConfig(**sector_gate_data),
     )

@@ -117,6 +117,27 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
                 logger.info("[%s] Skip %s — retraced %.0f%% to stop before entry (live %.2f, plan %.2f, stop %.2f)",
                             AGENT_NAME, symbol, retrace * 100, live, plan_entry_lvl, stop)
                 continue
+        # Intraday sector gate: composite plans are formed pre-market on TRAILING
+        # sector momentum (yesterday's leader). If that sector is being SOLD today,
+        # don't long into it — 7/31 booked WIPRO (top pick, IT) while IT was the
+        # WORST sector, -215, on a +0.7% broad-up day. Check the sector INDEX's
+        # same-day move at book time and skip if it's weak. ORB is exempt (it
+        # confirms with its own breakout). FAIL-OPEN: an unavailable read (None)
+        # never blocks the book.
+        sg = getattr(cfg, "sector_gate", None)
+        if not is_orb and sg is not None and sg.enabled:
+            sector = plan.get("sector")
+            if sector:
+                from autotrader.tools.upstox_data import sector_intraday_move
+                smove = sector_intraday_move(sector)
+                if smove is not None and smove < sg.min_sector_pct:
+                    audit.append(audit_entry(agent=AGENT_NAME, action="skip_sector_weak",
+                                             data={"symbol": symbol, "sector": sector,
+                                                   "sector_pct": smove, "min": sg.min_sector_pct}))
+                    logger.info("[%s] Skip %s — sector %s weak today %.2f%% < %.2f%%",
+                                AGENT_NAME, symbol, sector, smove, sg.min_sector_pct)
+                    continue
+
         # Extension guard: don't chase a name that has already run too far above
         # the planned entry at the open (real-desk "don't chase" rule).
         plan_entry = plan.get("entry", 0) or 0

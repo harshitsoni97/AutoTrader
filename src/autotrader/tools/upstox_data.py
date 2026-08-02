@@ -312,6 +312,54 @@ def get_nifty_intraday_move() -> dict[str, float] | None:
     }
 
 
+# Sector name (as carried on composite plans / used by SectorRotationAgent) ->
+# Upstox NSE_INDEX instrument key. Used by the intraday sector gate.
+_SECTOR_INDEX_KEYS = {
+    "Banking": "NSE_INDEX|Nifty Bank",
+    "Bank": "NSE_INDEX|Nifty Bank",
+    "IT": "NSE_INDEX|Nifty IT",
+    "Pharma": "NSE_INDEX|Nifty Pharma",
+    "Auto": "NSE_INDEX|Nifty Auto",
+    "FMCG": "NSE_INDEX|Nifty FMCG",
+    "Realty": "NSE_INDEX|Nifty Realty",
+    "Metal": "NSE_INDEX|Nifty Metal",
+    "Energy": "NSE_INDEX|Nifty Energy",
+    "Capital_Goods": "NSE_INDEX|Nifty Infra",
+    "Midcap": "NSE_INDEX|NIFTY MIDCAP 50",
+}
+
+
+def sector_intraday_move(sector: str) -> float | None:
+    """Same-day % move (open -> last_price) of the sector INDEX, or None.
+
+    Uses the full-quote endpoint (works during and after the session, like LTP), so
+    the intraday sector gate can see whether a sector is actually being bought TODAY
+    — as opposed to the composite's pre-market sector rank, which is trailing daily
+    momentum (yesterday's leader).
+
+    FAIL-OPEN by design: returns None on any unknown sector, missing key, or bad
+    data. Callers must NOT gate a trade when this returns None — a data gap must
+    never silently block every book.
+    """
+    key = _SECTOR_INDEX_KEYS.get(sector)
+    if not key:
+        return None
+    try:
+        q = get_full_quote([key])
+    except Exception:
+        return None
+    if not q:
+        return None
+    row = q.get(key) or (next(iter(q.values())) if len(q) == 1 else None)
+    if not isinstance(row, dict):
+        return None
+    op = row.get("open") or 0
+    last = row.get("last_price") or 0
+    if op <= 0 or last <= 0:
+        return None
+    return round((last / op - 1) * 100, 3)
+
+
 # ---------------------------------------------------------------------------
 # 5. Options chain
 # ---------------------------------------------------------------------------

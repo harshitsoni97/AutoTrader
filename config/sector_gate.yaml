@@ -1,0 +1,15 @@
+# Intraday sector gate for COMPOSITE plans.
+#
+# Composite plans are formed pre-market on TRAILING sector momentum (yesterday's
+# leading sector). If that sector is being SOLD *today*, longing into it is the
+# 7/31 WIPRO/IT loss (top pick booked while IT was the worst sector, -215, on a
+# +0.7% broad-up day). At book time the EntryAgent checks the sector INDEX's
+# same-day open->last move and skips the entry if it's below min_sector_pct.
+#
+# ORB plans are EXEMPT (they confirm with their own live breakout).
+# Fail-open: if the sector move can't be read, the trade is NOT blocked.
+#
+# Enable on OCI (env: SECTOR_GATE_ENABLED=true, or set enabled: true here).
+sector_gate:
+  enabled: false
+  min_sector_pct: -0.4   # skip a composite long if its sector index is below this % on the day

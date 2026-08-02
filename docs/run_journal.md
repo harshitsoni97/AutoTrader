@@ -5,6 +5,28 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-08-02 — FIX: intraday sector gate (composite plans) 🔧
+
+Root-caused the 7/31 loss to stale-sector momentum (audit: `sector_rotation.py`
+ranks sectors on 0.5×5d + 0.3×1d + 0.2×vol — all TRAILING daily bars; no same-day
+data; no adv/decl breadth anywhere; regime doesn't even see sectors). Composite
+plans are built pre-market on yesterday's leader, then booked blind at the open.
+
+**Gate (config `sector_gate`, default OFF):** at book time the EntryAgent reads the
+stock's sector INDEX same-day open→last move (`sector_intraday_move`, full-quote
+endpoint) and SKIPS a composite long if the sector is below `min_sector_pct` (-0.4%).
+ORB exempt. Fail-open (unavailable read never blocks). Enable via
+`SECTOR_GATE_ENABLED=true` or config/sector_gate.yaml.
+
+**7/31 replay with gate ON:** WIPRO (IT -1.8%) SKIPPED (saved -215), ETERNAL
+(Midcap -0.6%) SKIPPED (saved -342), SUNPHARMA (Pharma +0.5%) booked (kept +181).
+Composite side -376 → +181; ORB unchanged. The day's -303 would've been ~+162.
+
+Next: enable on OCI, watch that it doesn't over-gate on choppy sectors; then decide
+whether to also cut the 0.17 trailing sector-score weight / add adv-decl breadth.
+
+---
+
 ## 2026-07-31 — LOST −₹303 on a +0.7% broad UP day ❌ (stale-sector flaw exposed)
 
 Regime risk_on 100% — and this time the regime was RIGHT: Nifty **+0.7%** (24,317),
