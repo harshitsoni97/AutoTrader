@@ -325,7 +325,7 @@ _SECTOR_INDEX_KEYS = {
     "Metal": "NSE_INDEX|Nifty Metal",
     "Energy": "NSE_INDEX|Nifty Energy",
     "Capital_Goods": "NSE_INDEX|Nifty Infra",
-    "Midcap": "NSE_INDEX|NIFTY MIDCAP 50",
+    "Midcap": "NSE_INDEX|Nifty Midcap 50",
 }
 
 
