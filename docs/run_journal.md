@@ -5,6 +5,37 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-08-04 — red −₹314 on risk_on 73%; DIVISLAB RSI-89 stopped ❌
+
+4 trades: BSOFT +127 (IT), LT −331, IRCTC −97 (Midcap), DIVISLAB −195 (Pharma, reentry
+STOPPED). All 3 compete LLMs screamed DIVISLAB **RSI 89** "severely overbought" — and
+it stopped both hypothetically (−2.28%) AND when we booked it live via reentry (−195).
+The deterministic composite correctly avoided DIVISLAB as top pick (chose BSOFT), but
+the **reentry path booked DIVISLAB anyway** at RSI 89 → −195.
+- **The overbought penalty (RSI≥85→12) should have hammered DIVISLAB's score — yet the
+  reentry booked it. ACTION: does the reentry/hunt path apply the overbought penalty +
+  sector gate, or bypass them?** Losses here were stock-specific (sectors weren't red at
+  book, so the gate correctly didn't fire) — this one is an OVERBOUGHT-discipline gap on
+  the reentry path, not a sector-gate miss.
+
+## 2026-08-03 — BEST DAY +₹1,138 ✅✅✅ (risk_on 100%)
+
+5 trades: HCLTECH +335 (T2, IT), AXISBANK +482 (Banking), WIPRO +472 (T2 reentry),
+SBIN +156 (Banking), ETERNAL **−466 (Midcap, STOPPED)**. A genuine broad risk-on day
+and the book rode it — Banking names (AXIS/SBIN) + IT (HCLTECH) all paid.
+- **ETERNAL (Midcap) stopped AGAIN — 3rd Midcap wound** (7/31 −342, 8/3 −466).
+  CONFIRMED: this run was BEFORE the OCI pull, so the Midcap key was still returning
+  **None** → the gate FAILED OPEN on Midcap and let ETERNAL book. Once the 8/02 Midcap
+  fix is pulled, the gate will actually see Midcap and this is the loss it should catch.
+  **ACTION next session: verify `sector_intraday_move('Midcap')` returns a number.**
+- Note the WIN side is Banking-led (AXIS/SBIN), NOT the pre-market "top sectors:
+  IT/Pharma/Midcap". The trailing sector rank was wrong again; we won on names the
+  intraday hunt/ORB surfaced, not the stale composite ranking.
+
+**8-day tally: +₹370/−473/+50/+109/+499/−303/+1138/−314 = +₹1,076, 32 trades.**
+
+---
+
 ## 2026-08-02 — FIX: intraday sector gate (composite plans) 🔧
 
 Root-caused the 7/31 loss to stale-sector momentum (audit: `sector_rotation.py`
