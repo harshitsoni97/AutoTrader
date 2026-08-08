@@ -50,6 +50,11 @@ class TradingPolicy(BaseModel):
     # this many ATR above the planned entry (chasing an extended move).
     max_entry_extension_atr: float = 1.5
     max_entry_stop_retrace: float = 0.5
+    # Re-entry discipline: the intraday reentry agent redeploys freed capital into
+    # the next-best ranked name. Don't chase an overbought one — 8/4 booked DIVISLAB
+    # at RSI 89 via reentry (all 3 LLMs flagged it "severely overbought") and it
+    # stopped -195. Skip a reentry candidate whose RSI >= this ceiling.
+    reentry_max_rsi: float = 80.0
 
 
 class MemoryBackendConfig(BaseModel):

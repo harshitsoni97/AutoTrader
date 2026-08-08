@@ -69,6 +69,36 @@ def _dry_run_fill(symbol: str, qty: int, entry: float, tag: str) -> dict:
     }
 
 
+def _reentry_block_reason(cand: dict, cfg) -> tuple[str, dict] | None:
+    """Apply the same discipline the initial EntryAgent uses, to reentry candidates.
+
+    The reentry agent redeploys freed capital into the next-best ranked name — but
+    historically booked it BLIND (no overbought/sector checks), so DIVISLAB at RSI 89
+    slipped through on 8/4 (-195). Returns (action, data) to skip, or None to allow.
+    """
+    policy = cfg.trading_policy
+    # 1. Overbought ceiling — don't chase a stretched name on a low-conviction redeploy.
+    rsi = cand.get("rsi", 50) or 50
+    max_rsi = getattr(policy, "reentry_max_rsi", 80.0)
+    if rsi >= max_rsi:
+        return ("reentry_skip_overbought", {"symbol": cand.get("symbol"), "rsi": rsi, "max_rsi": max_rsi})
+    # 2. Intraday sector gate — don't long into a sector being sold today (same as EntryAgent).
+    sg = getattr(cfg, "sector_gate", None)
+    if sg is not None and sg.enabled:
+        sector = cand.get("sector")
+        if sector:
+            try:
+                from autotrader.tools.upstox_data import sector_intraday_move
+                smove = sector_intraday_move(sector)
+            except Exception:
+                smove = None
+            if smove is not None and smove < sg.min_sector_pct:
+                return ("reentry_skip_sector_weak",
+                        {"symbol": cand.get("symbol"), "sector": sector,
+                         "sector_pct": smove, "min": sg.min_sector_pct})
+    return None
+
+
 def intra_reentry_agent(state: TradingState) -> dict[str, Any]:
     logger.info("[%s] Checking for re-entry opportunities", AGENT_NAME)
 
@@ -125,8 +155,22 @@ def intra_reentry_agent(state: TradingState) -> dict[str, Any]:
         orig_qty = trig_pos.get("qty", 0) * 2  # qty was halved when target1 hit
         freed_capital = (orig_qty // 2) * trig_pos.get("target1", trig_pos["entry_price"])
 
-        # Pick next best candidate
-        next_cand = candidates.pop(0)
+        # Pick next best candidate that passes reentry discipline (overbought +
+        # sector gate). A blocked candidate falls through to the next-best rather
+        # than aborting the redeploy.
+        next_cand = None
+        while candidates:
+            cand = candidates.pop(0)
+            block = _reentry_block_reason(cand, cfg)
+            if block:
+                action, data = block
+                audit_entries.append(audit_entry(agent=AGENT_NAME, action=action, data=data))
+                logger.info("[%s] Reentry skip %s — %s %s", AGENT_NAME, cand.get("symbol"), action, data)
+                continue
+            next_cand = cand
+            break
+        if next_cand is None:
+            break  # no acceptable candidate left
         symbol = next_cand["symbol"]
 
         # Get live price; fall back to pre-market price

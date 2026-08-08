@@ -5,6 +5,24 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-08-08 — FIX: reentry discipline (overbought + sector gate) 🔧
+
+Closed the back-door leak found on 8/4: the IntraReentryAgent redeployed freed
+capital by popping the next-best ranked name and booking it BLIND — no overbought
+check, no sector gate (unlike EntryAgent). That booked DIVISLAB at RSI 89 (-195)
+after all 3 LLMs flagged it "severely overbought".
+
+Fix (`reentry.py` + `TradingPolicy.reentry_max_rsi`, default 80):
+- Skip a reentry candidate whose RSI >= reentry_max_rsi (overbought ceiling).
+- Apply the same intraday sector gate as EntryAgent (skip longs into a sector
+  red today), when sector_gate.enabled.
+- A blocked candidate FALLS THROUGH to the next-best rather than aborting the
+  redeploy (pop-until-valid).
+Replay 8/4: DIVISLAB (RSI 89) SKIPPED → falls through to INFY (RSI 60) booked.
+Now the reentry path enforces the same discipline as the initial book.
+
+---
+
 ## 2026-08-07 — +₹428; composite TOP PICK finally wins big (SBIN +648) ✅
 
 Regime risk_on 93%. Top pick **SBIN (Banking, 83.5) → T2 +₹648** — first clean
