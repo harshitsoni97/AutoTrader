@@ -5,6 +5,22 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-08-07 — +₹428; composite TOP PICK finally wins big (SBIN +648) ✅
+
+Regime risk_on 93%. Top pick **SBIN (Banking, 83.5) → T2 +₹648** — first clean
+composite-top-pick winner in this run, and it was BANKING (not the stale-IT trap).
+5 trades: SBIN +648, HINDUNILVR +37, NESTLEIND −9, INFY −47 (IT), TMCV −296 (Auto,
+stopped). Winner covered the losers — the healthy shape. All 3 compete LLMs agreed
+SBIN and were right (+3.31% hypo).
+- Sector rank was Banking/Auto/FMCG (not IT/Pharma/Midcap) — and Banking led for
+  real. When the trailing rank happens to match the day, the composite works.
+- Losers were stock-specific (TMCV/INFY), sectors weren't red enough to gate.
+
+**9-day tally: +₹1,504, 37 trades** (through 8/07). Net comfortably positive; still
+driven by a few big winners (8/3 +1138, SBIN +648) over many small trades.
+
+---
+
 ## 2026-08-04 — red −₹314 on risk_on 73%; DIVISLAB RSI-89 stopped ❌
 
 4 trades: BSOFT +127 (IT), LT −331, IRCTC −97 (Midcap), DIVISLAB −195 (Pharma, reentry
