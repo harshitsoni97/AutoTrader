@@ -5,6 +5,40 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## Week 2026-08-10 → 08-14 (all PRE-PULL — fixes NOT live) 📊
+
+Week: +181 / +1,243 / −348 / +353 / **−946** = **+₹483**. Net green but two outlier
+days dominate — the distribution IS the story.
+
+| Day | Regime | P&L | Notable |
+|---|---|---|---|
+| 8/10 | bullish 73% | +181 | eligible 0; DLF +384 carried steel losers |
+| 8/11 | bullish 77% | **+1,243** | **DIVISLAB +1,213** (RSI-high pharma) |
+| 8/12 | range_bound 59% | −348 | MARUTI −380 stop |
+| 8/13 | range_bound 56% | +353 | NTPC/BEL, clean small day |
+| 8/14 | bullish 73% | **−946** | TMCV(RSI81) −476, DIVISLAB −250, WIPRO −221 — all overbought, reversed |
+
+### Lesson: overbought momentum is HIGH-VARIANCE, not simply bad
+The SAME name family (DIVISLAB/TMCV, RSI 78–89 breakout) produced BOTH the +1,213
+(8/11) and most of the −946 (8/14). A blunt "never trade RSI>80" on the INITIAL book
+would have killed 8/11's +1,213 too. That's exactly why the reentry fix put the RSI
+ceiling only on LOW-conviction redeploys, not on initial top-pick plans.
+
+### Would the shipped fixes have changed this week? (mostly NO — be honest)
+- 8/14 TMCV −476 was the pre-market TOP PICK plan (RSI 81), not a reentry → the reentry
+  ceiling does not touch it; it would STILL book. Sector gate only helps if Auto was red
+  intraday. So the fixes likely would NOT have saved most of 8/14.
+- The fixes bite elsewhere: down-sector composite longs (7/31) and overbought REENTRIES
+  (8/4) — neither was 8/14's failure mode.
+
+**OPEN QUESTION (decide with data, NOT now): should the INITIAL entry also refuse
+extreme RSI (≥~82)?** It would've blocked 8/14 −476 but also 8/11 +1,213. Need a clean
+post-pull sample before touching this — cutting the overbought tail cuts both ends.
+
+**~14-session tally ≈ +₹1,987, ~52 trades — still carried by a few big winners.**
+
+---
+
 ## 2026-08-08 — FIX: reentry discipline (overbought + sector gate) 🔧
 
 Closed the back-door leak found on 8/4: the IntraReentryAgent redeployed freed
