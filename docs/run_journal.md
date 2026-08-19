@@ -5,6 +5,39 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## Week 2026-08-17 → 08-19 (POST-PULL — fixes live) — 3 red/flat days ❌
+
+−484 / −622 / +14 = **−₹1,092**. Checked the tape: the market was WEAK all stretch —
+prior week Nifty −0.83% with 15/16 sectors down (crude + ME tension); 8/17–19 a
+nervous 24,000–24,500 consolidation. All 3 regimes RESOLVED bearish/range_bound.
+
+| Day | Pre-regime | Booked (all longs) | P&L |
+|---|---|---|---|
+| 8/17 | range_bound 51%, eligible 0 | POWERGRID −132, COALINDIA +49, MARUTI −400 | −484 |
+| 8/18 | bullish 65%, eligible 2 | COALINDIA −314, BAJFINANCE −108, LT −201 | −622 |
+| 8/19 | range_bound 58%, eligible 1 | JSWSTEEL +84, TITAN −41, DLF −29 | +14 |
+
+### What the fixes DID do (composite behaved well)
+- Composite mostly GATED itself (eligible 0/2/1) — correct in weak/low-conf regimes.
+- 8/18 OBEROIRLTY was the top pick but was NOT booked live (compete hypo stopped it
+  −2.33% at the open) — a guard (near-stop/sector) correctly skipped a gap-down. Good.
+- So the composite is NOT the bleed source here. The losses are ORB + intraday-HUNT
+  longs (MARUTI, COALINDIA, LT, BAJFINANCE) booking into a falling/choppy tape.
+
+### THE STRUCTURAL PATTERN (now undeniable): long-only bleeds on weak tape
+Our worst stretches — 7/23, 8/14, 8/17–19 — are ALL "long-only booking into a weak or
+falling market." ORB and the intraday hunt keep buying breakouts regardless of the
+broad tape; on down/choppy days those breakouts fail. The composite already sits out
+(floor-gated); ORB/hunt do NOT. **The missing piece is a MARKET-WIDE long throttle:
+when the index is clearly red intraday (or breadth is negative), throttle/skip NEW
+longs across ORB + hunt too** — the same breadth/intraday-Nifty signal flagged since
+the 7/28–31 regime misses. This is the next structural fix, once we have more data.
+
+**~17-session tally ≈ +₹895, ~61 trades.** The +1,987 peak gave ~₹1,092 back on a weak
+week — long-only doing exactly what long-only does in a down tape.
+
+---
+
 ## Week 2026-08-10 → 08-14 (all PRE-PULL — fixes NOT live) 📊
 
 Week: +181 / +1,243 / −348 / +353 / **−946** = **+₹483**. Net green but two outlier
