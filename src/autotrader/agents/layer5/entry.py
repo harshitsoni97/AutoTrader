@@ -66,6 +66,18 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
 
     from autotrader.core.slippage import slipped_fill
 
+    # Market-wide long throttle: if the index is clearly red intraday, skip ALL new
+    # longs this cycle (composite + ORB + hunt). Our worst days were long-only booking
+    # into a falling tape (7/23, 8/14, 8/17-19). Computed once (one index read).
+    # Fail-open: disabled or unavailable read → not throttled.
+    from autotrader.tools.upstox_data import market_long_throttled
+    throttled, nifty_pct = market_long_throttled(cfg)
+    if throttled:
+        logger.info("[%s] Market throttle active — Nifty %.2f%% intraday; skipping %d booking(s)",
+                    AGENT_NAME, nifty_pct or 0.0, len(to_book))
+        return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="market_throttle_skip_all",
+                                            data={"nifty_pct": nifty_pct, "plans": len(to_book)})]}
+
     new_positions: list[dict] = []
     new_orders: list[dict] = []
     msgs: list[dict] = []

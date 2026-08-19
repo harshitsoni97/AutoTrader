@@ -123,6 +123,15 @@ def intra_reentry_agent(state: TradingState) -> dict[str, Any]:
         entry = audit_entry(agent=AGENT_NAME, action="no_reentry_trigger", data={})
         return {"audit_trail": [entry]}
 
+    # Market-wide long throttle: don't redeploy freed capital into a new long while the
+    # index is clearly red intraday (same gate as EntryAgent). Fail-open.
+    from autotrader.tools.upstox_data import market_long_throttled
+    throttled, nifty_pct = market_long_throttled(cfg)
+    if throttled:
+        logger.info("[%s] Market throttle active — Nifty %.2f%% — skipping reentry", AGENT_NAME, nifty_pct or 0.0)
+        return {"audit_trail": [audit_entry(agent=AGENT_NAME, action="reentry_market_throttled",
+                                            data={"nifty_pct": nifty_pct})]}
+
     # Daily trade budget remaining
     daily_trades = state.get("daily_trades_taken", 0)
     daily_budget_left = policy.max_daily_trades - daily_trades

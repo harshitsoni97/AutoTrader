@@ -5,7 +5,27 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
-## Week 2026-08-17 → 08-19 (POST-PULL — fixes live) — 3 red/flat days ❌
+## 2026-08-19 — FIX: market-wide long throttle 🔧
+
+Built the structural fix for the recurring "long-only bleeds on weak tape" pattern
+(7/23, 8/14, 8/17-19). One intraday check gates ALL new longs (composite + ORB + hunt
++ reentry): if Nifty's same-day open->now move is below `min_nifty_pct` (default -0.5%),
+skip new bookings this cycle.
+
+- `market_long_throttled(cfg)` in upstox_data (reuses get_nifty_intraday_move).
+- Wired into entry_agent (covers composite/ORB/hunt — hunt emits plans booked by entry)
+  and reentry_agent (redeploys). Computed once per cycle (one index read).
+- Config `market_throttle` (default OFF), env MARKET_THROTTLE_ENABLED. Fail-open:
+  disabled or unavailable read never blocks trading. Conservative -0.5% — only fires
+  when the market is clearly down; relax (more negative) if it over-gates green days.
+- Validated: −0.8%→throttle (0 booked, even an ORB plan), +0.3%→trades, None→fail-open.
+
+Would have helped 8/17-19: those were long-only booking into a weak/down tape; on the
+red intraday sessions the throttle skips new longs instead of feeding false breakouts.
+
+---
+
+## Week 2026-08-17 → 08-19 (POST-PULL — sector/reentry fixes live) — 3 red/flat days ❌
 
 −484 / −622 / +14 = **−₹1,092**. Checked the tape: the market was WEAK all stretch —
 prior week Nifty −0.83% with 15/16 sectors down (crude + ME tension); 8/17–19 a

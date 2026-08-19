@@ -329,6 +329,29 @@ _SECTOR_INDEX_KEYS = {
 }
 
 
+def market_long_throttled(cfg) -> tuple[bool, float | None]:
+    """Should NEW longs be throttled right now because the market is clearly red?
+
+    Reads Nifty's same-day open->now move. Returns (throttled, nifty_pct). FAIL-OPEN:
+    if the config is disabled or the index read is unavailable, returns (False, None)
+    so a data gap never blocks trading. Used by the entry + reentry agents to gate ALL
+    new longs (composite + ORB + hunt) on a down tape.
+    """
+    mt = getattr(cfg, "market_throttle", None)
+    if mt is None or not mt.enabled:
+        return (False, None)
+    try:
+        move = get_nifty_intraday_move()
+    except Exception:
+        return (False, None)
+    if not move:
+        return (False, None)
+    pct = move.get("pct_from_open")
+    if pct is None:
+        return (False, None)
+    return (pct < mt.min_nifty_pct, pct)
+
+
 def sector_intraday_move(sector: str) -> float | None:
     """Same-day % move (open -> last_price) of the sector INDEX, or None.
 

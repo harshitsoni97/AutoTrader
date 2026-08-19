@@ -235,6 +235,24 @@ class SectorGateConfig(BaseModel):
     min_sector_pct: float = -0.4    # skip long if sector index is below this % on the day
 
 
+class MarketThrottleConfig(BaseModel):
+    """Market-wide long throttle — skip ALL new longs when the index is clearly red.
+
+    Our worst stretches (7/23, 8/14, 8/17-19) were all long-only booking into a weak
+    or falling tape. The composite already floor-gates itself in weak regimes, but ORB
+    and the intraday hunt keep buying breakouts regardless of the broad market. This
+    is a single intraday check: if Nifty's same-day open->now move is below
+    `min_nifty_pct`, skip NEW longs this cycle (across composite + ORB + hunt +
+    reentry). Fail-open: if the index read is unavailable, do NOT throttle. Conservative
+    default (-0.5%) — only throttles when the market is clearly down. Relax if it
+    over-gates on healthy days.
+
+    Default DISABLED so it never disturbs the running system; flip enabled=true.
+    """
+    enabled: bool = False
+    min_nifty_pct: float = -0.5     # skip new longs if Nifty is below this % on the day
+
+
 class PlatformConfig(BaseModel):
     trading_policy: TradingPolicy = Field(default_factory=TradingPolicy)
     memory_policy: MemoryPolicy = Field(default_factory=MemoryPolicy)
@@ -247,6 +265,7 @@ class PlatformConfig(BaseModel):
     universe: UniverseConfig = Field(default_factory=UniverseConfig)
     orb: ORBConfig = Field(default_factory=ORBConfig)
     sector_gate: SectorGateConfig = Field(default_factory=SectorGateConfig)
+    market_throttle: MarketThrottleConfig = Field(default_factory=MarketThrottleConfig)
 
 
 # Alias used by tests and scripts
@@ -279,6 +298,9 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     sector_gate_data = _load_yaml(root / "sector_gate.yaml").get("sector_gate", {})
     if os.getenv("SECTOR_GATE_ENABLED") is not None:
         sector_gate_data["enabled"] = os.getenv("SECTOR_GATE_ENABLED", "false").lower() == "true"
+    market_throttle_data = _load_yaml(root / "market_throttle.yaml").get("market_throttle", {})
+    if os.getenv("MARKET_THROTTLE_ENABLED") is not None:
+        market_throttle_data["enabled"] = os.getenv("MARKET_THROTTLE_ENABLED", "false").lower() == "true"
 
     # Environment variable overrides for key settings
     if os.getenv("TRADING_ENABLED") is not None:
@@ -319,4 +341,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         universe=UniverseConfig(**universe_data),
         orb=ORBConfig(**orb_data),
         sector_gate=SectorGateConfig(**sector_gate_data),
+        market_throttle=MarketThrottleConfig(**market_throttle_data),
     )

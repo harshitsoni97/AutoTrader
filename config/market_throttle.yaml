@@ -1,0 +1,16 @@
+# Market-wide long throttle.
+#
+# Our worst stretches (7/23, 8/14, 8/17-19) were all long-only booking into a weak or
+# falling tape. The composite already floor-gates itself in weak regimes, but ORB and
+# the intraday hunt keep buying breakouts regardless of the broad market. This is one
+# intraday check: if Nifty's same-day open->now move is below min_nifty_pct, skip ALL
+# new longs this cycle (composite + ORB + hunt + reentry).
+#
+# Conservative default (-0.5%): only throttles when the market is clearly down.
+# Fail-open: if the Nifty read is unavailable, trading is NOT blocked.
+# Relax min_nifty_pct (more negative) if it over-gates on healthy days.
+#
+# Enable on OCI (env: MARKET_THROTTLE_ENABLED=true, or set enabled: true here).
+market_throttle:
+  enabled: false
+  min_nifty_pct: -0.5   # skip new longs when Nifty is below this % on the day
