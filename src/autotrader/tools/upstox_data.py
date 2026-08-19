@@ -329,24 +329,44 @@ _SECTOR_INDEX_KEYS = {
 }
 
 
+_NIFTY_INDEX_KEY = "NSE_INDEX|Nifty 50"
+
+
+def nifty_intraday_pct() -> float | None:
+    """Nifty 50 same-day % move (open -> last_price), or None if unavailable.
+
+    Uses the full-quote endpoint (open + last_price) — the SAME reliable source the
+    sector gate uses — NOT the candle endpoints, which don't reliably serve today's
+    data even during the live session (the ORB lesson). Works during and after hours.
+    """
+    try:
+        q = get_full_quote([_NIFTY_INDEX_KEY])
+    except Exception:
+        return None
+    if not q:
+        return None
+    row = q.get(_NIFTY_INDEX_KEY) or (next(iter(q.values())) if len(q) == 1 else None)
+    if not isinstance(row, dict):
+        return None
+    op = row.get("open") or 0
+    last = row.get("last_price") or 0
+    if op <= 0 or last <= 0:
+        return None
+    return round((last / op - 1) * 100, 3)
+
+
 def market_long_throttled(cfg) -> tuple[bool, float | None]:
     """Should NEW longs be throttled right now because the market is clearly red?
 
-    Reads Nifty's same-day open->now move. Returns (throttled, nifty_pct). FAIL-OPEN:
-    if the config is disabled or the index read is unavailable, returns (False, None)
-    so a data gap never blocks trading. Used by the entry + reentry agents to gate ALL
-    new longs (composite + ORB + hunt) on a down tape.
+    Reads Nifty's same-day open->now move via full-quote (reliable during/after hours).
+    Returns (throttled, nifty_pct). FAIL-OPEN: if the config is disabled or the index
+    read is unavailable, returns (False, None) so a data gap never blocks trading. Used
+    by the entry + reentry agents to gate ALL new longs (composite + ORB + hunt).
     """
     mt = getattr(cfg, "market_throttle", None)
     if mt is None or not mt.enabled:
         return (False, None)
-    try:
-        move = get_nifty_intraday_move()
-    except Exception:
-        return (False, None)
-    if not move:
-        return (False, None)
-    pct = move.get("pct_from_open")
+    pct = nifty_intraday_pct()
     if pct is None:
         return (False, None)
     return (pct < mt.min_nifty_pct, pct)
