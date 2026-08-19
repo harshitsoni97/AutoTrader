@@ -148,7 +148,20 @@ def main():
         
         iteration += 1
         logger.info("intraday_iteration", iteration=iteration)
-        
+
+        # Heartbeat: record the Nifty same-day move + whether the market-long throttle
+        # would fire THIS cycle — logged every cycle (even when nothing trades) so we
+        # can verify the throttle from logs after hours instead of live. Never raises.
+        try:
+            from autotrader.tools.upstox_data import nifty_intraday_pct, market_long_throttled
+            _npct = nifty_intraday_pct()
+            _throttled, _ = market_long_throttled(config)
+            logger.info("market_throttle_heartbeat", iteration=iteration,
+                        nifty_pct=_npct, throttle_enabled=config.market_throttle.enabled,
+                        would_throttle=_throttled, min_nifty_pct=config.market_throttle.min_nifty_pct)
+        except Exception as exc:
+            logger.warning("market_throttle_heartbeat_failed", error=str(exc))
+
         try:
             result = graph.invoke(state)
             # Update state with monitoring results for next iteration
