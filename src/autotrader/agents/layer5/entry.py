@@ -176,6 +176,10 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
                 bars = tm_gate.recent_bars_for(symbol, cfg)
                 tdec = tm_gate.decide(plan, bars, cfg)
                 tm_line = tdec.get("line", "")
+                # Log EVERY evaluation (not just overrides) so it's verifiable from logs.
+                logger.info("time_machine_eval", symbol=symbol, verdict=tdec.get("verdict"),
+                            raw=tdec.get("raw_decision"), final=tdec.get("final_decision"),
+                            overridden=tdec.get("overridden"), bars=len(bars), line=tm_line)
                 if tdec.get("overridden"):
                     audit.append(audit_entry(agent=AGENT_NAME, action="time_machine_override_skip",
                                              data={"symbol": symbol, "raw": "BOOK", "final": "SKIP",
