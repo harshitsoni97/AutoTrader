@@ -249,6 +249,7 @@ class TimeMachineConfig(BaseModel):
     enabled: bool = False
     gate: bool = True               # True: influence (override); False: advisory-only
     min_expectancy_r: float = 0.0   # final SKIP if Monte-Carlo expectancy_r < this
+    min_hist_n: int = 20            # trust historical-replay expectancy only with >= this many windows
     horizon_bars: int = 75          # setup holding horizon in bars (~a session of 5-min bars)
     lookback_days: int = 5          # recent days of intraday bars to resample
     n_sims: int = 5000

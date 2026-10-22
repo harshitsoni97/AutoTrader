@@ -49,11 +49,24 @@ def decide(plan: dict, bars: list[dict], cfg) -> dict:
     rec["verdict"] = report.get("verdict", "insufficient_data")
     rec["line"] = summarize_line(report)
 
-    exp = (report.get("monte_carlo") or {}).get("expectancy_r")
-    # Only a REAL, below-threshold expectancy can override — and only when gating.
-    if tm.gate and exp is not None and exp < tm.min_expectancy_r:
-        rec["final_decision"] = "SKIP"
-        rec["overridden"] = True
+    mc_exp = (report.get("monte_carlo") or {}).get("expectancy_r")
+    hist = report.get("historical_replay") or {}
+    hist_exp = hist.get("expectancy_r")
+    hist_n = hist.get("n", 0)
+    min_hist_n = getattr(tm, "min_hist_n", 20)
+
+    # Conservative gate: override to SKIP if EITHER estimator is below threshold.
+    # MC (i.i.d. resample) can be optimistic because it destroys sequential structure;
+    # the historical replay walks real paths and catches tight-stop chop MC misses
+    # (RELIANCE live: MC 56% favorable vs replay 29%). Require BOTH to clear — but only
+    # trust the replay when it has enough samples. Fail-open: no MC => no override.
+    if tm.gate and mc_exp is not None:
+        mc_bad = mc_exp < tm.min_expectancy_r
+        hist_bad = (hist_exp is not None and hist_n >= min_hist_n and hist_exp < tm.min_expectancy_r)
+        if mc_bad or hist_bad:
+            rec["final_decision"] = "SKIP"
+            rec["overridden"] = True
+            rec["override_by"] = "monte_carlo" if mc_bad else "historical_replay"
     return rec
 
 
