@@ -5,6 +5,34 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-10-22 — Toolkit build: Time Machine gate + mean-reversion signal 🔧🔧
+
+Deep-analyzed the day-trader-skill pack + classic patterns (mean-reversion, pairs,
+sector rotation) against our stack. Verdict: we already have better versions of its
+scanner/entry/exit/risk/sizing; pairs is DISQUALIFIED (needs shorting, both our markets
+are long-only); the genuine net-new value is (1) the Time Machine and (2) mean-reversion.
+
+**Built + validated (both market-agnostic, pure, India now / UK later):**
+1. **Time Machine gate** (`validation/time_machine.py` + `tm_gate.py`): pre-trade
+   expectancy (Monte-Carlo resample + historical replay) attached to every plan that
+   passes the guards. `gate=true` lets a below-threshold expectancy OVERRIDE raw BOOK ->
+   final SKIP; Slack shows BOTH decisions. Validated: uptrend books, downtrend
+   overridden to SKIP, no-bars fail-open, advisory mode never skips. Config
+   `time_machine` (OFF), env TIME_MACHINE_ENABLED.
+2. **Mean-reversion / oversold-bounce** (`strategies/mean_reversion.py`): the real
+   DIVERSIFIER — long-only, buys capitulation + bounce bar, targets the mean. It tends
+   to win on the choppy/down days where our all-momentum book bleeds. Validated on
+   synthetic tapes: washout+bounce fires (RR 3.44), falling knife/uptrend/flat all
+   correctly produce no signal (no falling-knife catch).
+
+**Still to do (honest):** neither is proven on REAL money yet. Next: (a) wire TM full on
+OCI advisory-first → confirm its verdict predicts outcomes before trusting the gate;
+(b) BACKTEST mean-reversion on NSE history (does it make money AND is it really
+counter-correlated to ORB?) before adding it to the live book — same discipline as ORB.
+Queued, not built: sector-rotation-v2 (intraday-aware), flags/continuation.
+
+---
+
 ## 2026-08-19 — FIX: market-wide long throttle 🔧
 
 Built the structural fix for the recurring "long-only bleeds on weak tape" pattern
