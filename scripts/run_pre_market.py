@@ -163,6 +163,33 @@ def main():
     from autotrader.tools.notifications import get_notifier
     notifier = get_notifier(config.notifications)
 
+    # Hybrid strategist (ADVISORY ONLY for now): compute the day's DailyBias from the
+    # regime + recent P&L and SHOW it — it does NOT affect trading yet. We watch its
+    # calls for a stretch before wiring it into sizing/selection. The bias is already
+    # safety-clamped (tighten/reduce only).
+    try:
+        from autotrader.agent.strategist import strategist_bias
+        from autotrader.core.pnl_ledger import recent_pnls, recent_rows
+        pnls = recent_pnls(5)
+        bias = strategist_bias(
+            result.get("market_regime", ""),
+            result.get("market_confidence", 0.0) or 0.0,
+            pnls, config, use_llm=False,
+        )
+        hist = ", ".join(f"{r['date'][5:]}:{r['pnl']:+.0f}" for r in recent_rows(5)) or "none yet"
+        logger.info("strategist_bias_advisory", **bias.as_dict(), recent=pnls)
+        notifier.send(
+            subject=f"🧭 Strategist (advisory) — {result.get('run_date','')}",
+            body=(f"Bias (NOT yet affecting trades):\n"
+                  f"• favor: {bias.favor or '—'}  |  avoid: {bias.avoid or '—'}\n"
+                  f"• risk_mult: {bias.risk_mult}x  |  max_positions: {bias.max_positions or 'default'}\n"
+                  f"• throttle: {bias.throttle_min_nifty_pct if bias.throttle_min_nifty_pct is not None else 'default'}\n"
+                  f"• why: {bias.rationale}\n"
+                  f"recent P&L: {hist}"),
+        )
+    except Exception as exc:
+        logger.warning("strategist_advisory_failed", error=str(exc))
+
     # Trade plans — entry/stop/targets for all opportunities. These are PLANS,
     # booked at the real price after the open by the intraday EntryAgent.
     notifier.notify_trade_plans(

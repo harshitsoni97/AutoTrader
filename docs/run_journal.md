@@ -5,6 +5,27 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-10-22 — Hybrid agent online (ADVISORY): strategist + P&L ledger 🧭
+
+Chose the hybrid architecture (rails + strategist, NOT a full LLM loop) — keeps
+determinism, backtestability, guaranteed guards, cost control. Built the foundation:
+- **DailyBias + clamp_bias** — the safety sandbox: an agent can only tighten/reduce,
+  never loosen/bypass. Validated: hostile output (risk 3x, maxpos 99, throttle -5) clamps
+  to base limits.
+- **Strategist** — rule-based biases from regime + recent P&L (momentum in strong tape;
+  mean-reversion + de-risk in weak/choppy; 2-red->0.6x; 3-red->0.4x + cut a slot). LLM
+  enrichment is a clamped optional no-op until a prompt is validated.
+- **P&L ledger** (`core/pnl_ledger.py`) — post-market appends {date,pnl,regime,trades};
+  strategist reads last 5. Idempotent per date.
+- **Advisory wiring** — pre-market computes the DailyBias and POSTS it to Slack
+  (🧭 Strategist advisory) + logs it, with ZERO trading effect. Watch its calls for a
+  stretch, THEN wire into sizing/selection.
+
+Validated end-to-end offline: ledger round-trip + 2-red-days -> risk 0.6x / throttle
+-0.3 while still favoring momentum in a risk_on regime.
+
+---
+
 ## 2026-10-22 — Toolkit build: Time Machine gate + mean-reversion signal 🔧🔧
 
 Deep-analyzed the day-trader-skill pack + classic patterns (mean-reversion, pairs,

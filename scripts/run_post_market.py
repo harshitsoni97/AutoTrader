@@ -139,6 +139,12 @@ def main():
             _sent_flag.write_text(f"sent {run_date}\n")
         except Exception as exc:
             logger.warning("summary_sent_flag_write_failed", error=str(exc))
+        # Record the day in the P&L ledger for the hybrid strategist (de-risk after losses).
+        try:
+            from autotrader.core.pnl_ledger import record as _ledger_record
+            _ledger_record(run_date, daily_pnl, result.get("market_regime", ""), trades_today)
+        except Exception as exc:
+            logger.warning("pnl_ledger_record_failed", error=str(exc))
 
     # Compete leaderboard — which stack made/lost most today
     competitor_results = result.get("competitor_results", [])
