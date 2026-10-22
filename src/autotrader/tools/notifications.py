@@ -197,6 +197,11 @@ class Notifier:
             f"Fill: ₹{order.get('fill_price')}\n"
             f"Order ID: {order.get('order_id')}"
         )
+        # Dual decision: when the Time Machine ran and agreed (final BOOK), show its
+        # expectancy line so the message carries both the raw and influenced decision.
+        tm_line = order.get("time_machine")
+        if tm_line:
+            body += f"\nDecision: BOOK (raw) → BOOK (final)\n{tm_line}"
         return self.send(subject, body)
 
     def notify_exit(self, exit_info: dict) -> dict[str, bool]:

@@ -235,6 +235,25 @@ class SectorGateConfig(BaseModel):
     min_sector_pct: float = -0.4    # skip long if sector index is below this % on the day
 
 
+class TimeMachineConfig(BaseModel):
+    """Pre-trade expectancy gate (Monte-Carlo + historical replay on recent bars).
+
+    For each plan that passes all other guards (the 'raw' BOOK decision), estimate the
+    odds of THIS setup given the stock's recent behavior. When gate=True, a verdict
+    below min_expectancy_r OVERRIDES raw BOOK -> final SKIP. The Slack message shows
+    BOTH the raw decision and the Time-Machine-influenced final decision.
+
+    Fail-open: if recent bars are unavailable, do NOT override (allow the raw decision).
+    Default DISABLED; flip enabled=true. gate=false => advisory-only (annotate, never skip).
+    """
+    enabled: bool = False
+    gate: bool = True               # True: influence (override); False: advisory-only
+    min_expectancy_r: float = 0.0   # final SKIP if Monte-Carlo expectancy_r < this
+    horizon_bars: int = 75          # setup holding horizon in bars (~a session of 5-min bars)
+    lookback_days: int = 5          # recent days of intraday bars to resample
+    n_sims: int = 5000
+
+
 class MarketThrottleConfig(BaseModel):
     """Market-wide long throttle — skip ALL new longs when the index is clearly red.
 
@@ -266,6 +285,7 @@ class PlatformConfig(BaseModel):
     orb: ORBConfig = Field(default_factory=ORBConfig)
     sector_gate: SectorGateConfig = Field(default_factory=SectorGateConfig)
     market_throttle: MarketThrottleConfig = Field(default_factory=MarketThrottleConfig)
+    time_machine: TimeMachineConfig = Field(default_factory=TimeMachineConfig)
 
 
 # Alias used by tests and scripts
@@ -301,6 +321,9 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
     market_throttle_data = _load_yaml(root / "market_throttle.yaml").get("market_throttle", {})
     if os.getenv("MARKET_THROTTLE_ENABLED") is not None:
         market_throttle_data["enabled"] = os.getenv("MARKET_THROTTLE_ENABLED", "false").lower() == "true"
+    time_machine_data = _load_yaml(root / "time_machine.yaml").get("time_machine", {})
+    if os.getenv("TIME_MACHINE_ENABLED") is not None:
+        time_machine_data["enabled"] = os.getenv("TIME_MACHINE_ENABLED", "false").lower() == "true"
 
     # Environment variable overrides for key settings
     if os.getenv("TRADING_ENABLED") is not None:
@@ -342,4 +365,5 @@ def load_config(config_root: Path | None = None) -> PlatformConfig:
         orb=ORBConfig(**orb_data),
         sector_gate=SectorGateConfig(**sector_gate_data),
         market_throttle=MarketThrottleConfig(**market_throttle_data),
+        time_machine=TimeMachineConfig(**time_machine_data),
     )

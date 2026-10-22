@@ -1,0 +1,16 @@
+# Time Machine — pre-trade expectancy gate (Monte-Carlo + historical replay).
+#
+# For each plan that passes all other guards (the RAW "BOOK" decision), estimate the
+# odds of THIS setup given the stock's recent 5-min behavior. When gate=true, a
+# below-threshold expectancy OVERRIDES raw BOOK -> final SKIP; the Slack message shows
+# BOTH decisions. Fail-open: no recent bars -> no override (books as normal).
+#
+# gate=false => advisory only (annotate the notification, never skip).
+# Enable on OCI (env: TIME_MACHINE_ENABLED=true, or set enabled: true here).
+time_machine:
+  enabled: false
+  gate: true               # true = influence/override; false = advisory-only
+  min_expectancy_r: 0.0    # final SKIP if Monte-Carlo expectancy_r < this
+  horizon_bars: 75
+  lookback_days: 5
+  n_sims: 5000

@@ -166,6 +166,31 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
         # Book at the real live price (adverse slippage on the buy).
         fill_price, slip = slipped_fill(live, qty, "BUY", half_spread_bps, impact_bps_per_lakh)
 
+        # Time Machine (pre-trade expectancy). All guards above = the RAW "BOOK" decision.
+        # When gating, a below-threshold expectancy OVERRIDES raw BOOK -> final SKIP. The
+        # notification shows BOTH decisions. Fail-open: no bars -> no override.
+        tm_line = ""
+        try:
+            from autotrader.validation import tm_gate
+            if cfg.time_machine.enabled:
+                bars = tm_gate.recent_bars_for(symbol, cfg)
+                tdec = tm_gate.decide(plan, bars, cfg)
+                tm_line = tdec.get("line", "")
+                if tdec.get("overridden"):
+                    audit.append(audit_entry(agent=AGENT_NAME, action="time_machine_override_skip",
+                                             data={"symbol": symbol, "raw": "BOOK", "final": "SKIP",
+                                                   "verdict": tdec.get("verdict"), "line": tm_line}))
+                    logger.info("[%s] %s — RAW BOOK but TimeMachine %s -> FINAL SKIP | %s",
+                                AGENT_NAME, symbol, tdec.get("verdict"), tm_line)
+                    notifier.send(
+                        subject=f"Trade decision — {symbol} [SKIPPED by Time Machine]",
+                        body=(f"Raw decision: BOOK (passed all guards)\n"
+                              f"Final decision: SKIP (Time Machine override)\n{tm_line}"),
+                    )
+                    continue
+        except Exception as exc:
+            logger.warning("time_machine_gate_failed", symbol=symbol, error=str(exc))
+
         # Re-anchor stop/targets to the ACTUAL fill, preserving the plan's ATR-based
         # distances. The plan levels were anchored to the pre-open plan entry; booking
         # at a different live price would otherwise distort R:R (e.g. a plan T1 only
@@ -190,6 +215,8 @@ def entry_agent(state: TradingState) -> dict[str, Any]:
             "requested_price": live, "fill_price": fill_price, "slippage": slip,
             "status": "DRY_RUN_ASSUMED" if is_dry_run else "FILLED", "tag": tag,
         }
+        if tm_line:
+            order["time_machine"] = tm_line
         position = {
             "symbol": symbol, "qty": qty,
             "entry_price": fill_price,      # REAL fill, not the pre-open plan level
