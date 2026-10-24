@@ -20,6 +20,13 @@ Note: advisory still showed SEEDED Aug P&L (ledger gap since 8/19); tonight's po
 records 10/23 so tomorrow's advisory shows fresh dates. Strategist reading ledger + regime
 correctly. Advisory validation clock started — grading its calls daily before it goes live.
 
+**ACTUAL TAPE (checked) — strategist call VINDICATED:** Nifty −0.39% (22,600), Sensex
+−126 (4th straight down day), breadth ~3:1 NEGATIVE (2,054 dec vs 602 adv), India VIX
+~16.8 up ~6% (4th rise, above 16), Nifty −2.36% on the week. A weak/falling/high-VIX/
+neg-breadth day — exactly the environment the strategist's "favor mean-reversion, de-risk,
+tighten throttle" call pointed at. 0 long trades on a 3:1-down day = the correct non-loss
+(a long-only momentum book bleeds there). First advisory call: CORRECT.
+
 ---
 
 ## 2026-10-22 — Hybrid agent online (ADVISORY): strategist + P&L ledger 🧭
