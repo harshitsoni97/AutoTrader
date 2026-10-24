@@ -5,6 +5,23 @@ Newest first. This is the human-readable companion to the pick-attribution log.
 
 ---
 
+## 2026-10-23 — Strategist advisory LIVE (day 1) 🧭 + flat day
+
+First 🧭 advisory message fired. Call: favor MEAN_REVERSION, risk 0.8x, throttle -0.3,
+on range_bound 56% / **VIX 15.8** (elevated — recent days were 11-12). Day resolved
+**bearish**, 0 trades, ₹0.
+
+**Grade: directionally sound, untested.** Choppy + elevated-VIX + bearish-resolving is
+exactly where momentum fails; leaning defensive/mean-reversion was the right read. No
+P&L to score (0 trades), but 0 trades on a bearish day = the cautious non-loss it was
+pointing at. Composite correctly gated (56% < 0.65 floor; INFY top pick ineligible).
+
+Note: advisory still showed SEEDED Aug P&L (ledger gap since 8/19); tonight's post-market
+records 10/23 so tomorrow's advisory shows fresh dates. Strategist reading ledger + regime
+correctly. Advisory validation clock started — grading its calls daily before it goes live.
+
+---
+
 ## 2026-10-22 — Hybrid agent online (ADVISORY): strategist + P&L ledger 🧭
 
 Chose the hybrid architecture (rails + strategist, NOT a full LLM loop) — keeps
