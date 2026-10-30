@@ -226,3 +226,12 @@ def test_uk_view_flags_indian_funds_and_converts(holdings, policy):
     assert any("non-reporting" in n for n in u["notes"])
     assert any("GOLDBEES" in n for n in u["notes"])  # held gold ETF
     assert any("Self Assessment" in n for n in u["notes"])
+
+
+def test_uk_view_nri_resident_account_and_fig(holdings, policy):
+    from autotrader.longterm.uk import uk_plan_view
+    plan = plan_rebalance(holdings, policy, {"decisions": {"BBB": {"action": "exit"}}})
+    u = uk_plan_view(holdings, policy, plan, {"uk_tax_resident": True, "gbp_inr": 100, "india_status": "NRI",
+                                              "india_account": "resident", "fig_eligible_until": "2029-04-05"})
+    assert u["notes"][0].startswith("ACCOUNT FIRST")
+    assert any("FIG regime available until 2029-04-05" in n for n in u["notes"])

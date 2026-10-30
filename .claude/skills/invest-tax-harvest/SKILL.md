@@ -73,7 +73,9 @@ repo. Then `rebalance`/`report` add a UK view. What changes:
   time limit. Dividends are taxable in the UK too, with credit for Indian TDS.
 - **New arrivals:** the 4-year Foreign Income and Gains (FIG) regime can exempt foreign gains. Ask when the
   user became UK resident.
-- **Indian residential status:** a UK resident is usually an Indian NRI. That means NRI (NRO/NRE, PIS)
+- **Indian residential status:** a UK resident is usually an Indian NRI. Under FEMA this starts on leaving India
+  for work or to live there, not after 182 days. Record `india_status` and `india_account` in `residency`; if an NRI
+  still trades through a resident account, say so first, before any trade. That means NRI (NRO/NRE, PIS)
   accounts instead of resident ones, no intraday trading, and TDS deducted by the broker on gains. Ask the
   user to confirm their account type.
 

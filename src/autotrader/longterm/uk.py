@@ -52,6 +52,18 @@ def uk_plan_view(holdings: list[Holding], policy: dict, plan: dict, residency: d
         "proceeds_gbp": round(plan["sells_total"] / fx, 2) if fx else None,
         "notes": notes,
     }
+    fig_until = residency.get("fig_eligible_until")
+    if fig_until:
+        notes.append(f"FIG regime available until {fig_until}: claiming it exempts that year's foreign gains and "
+                     "income from UK tax, but costs your personal allowance and the CGT annual exempt amount, and "
+                     "foreign losses in that year can't be used. "
+                     + ("With a net foreign loss this year, don't claim it." if cgt_net_inr < 0 else
+                        "Claim only if the foreign gains and income outweigh the allowances lost."))
+    if residency.get("india_status") == "NRI" and str(residency.get("india_account", "")).startswith("resident"):
+        notes.insert(0, "ACCOUNT FIRST: you are an NRI but the trading account is a resident one. Under FEMA, ask "
+                        "the broker to move the holdings to an NRI (NRO non-PIS) demat/trading account linked to "
+                        "your NRO bank account before placing these trades. Sales from an NRI account have TDS "
+                        "deducted by the broker.")
     if fx:
         if cgt_net_inr < 0:
             notes.append(f"Net capital loss of about £{-cgt_net_inr / fx:,.0f} this UK tax year: no UK CGT. Claim it "
