@@ -49,7 +49,8 @@ invest-portfolio-doctor -> invest-tax-harvest -> invest-research / invest-ev -> 
 4. **Tax picture** (`/invest-tax-harvest`). Which losses are worth booking and
    when, how much LTCG can be booked tax-free.
 5. **Sort every holding into one bucket**, writing `investor/decisions.yaml`:
-   - *core*: index ETFs (Nifty 50, Next 50, Midcap 150) and gold
+   - *core*: index ETFs (Nifty 50, Next 50, Midcap 150) and gold, or, if the user
+     wants no mutual funds/ETFs (`use_funds: false`), the large-cap leaders in `core_stocks`
    - *keep / add*: the satellites the user can state a thesis for in two lines
    - *trim*: over the single-stock (10%), group (15%) or sector (25%) cap
    - *exit*: duplicates (two names doing the same job: keep the leader),

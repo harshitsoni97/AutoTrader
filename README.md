@@ -929,6 +929,7 @@ python scripts/longterm_advisor.py report    --holdings investor/holdings.xlsx -
     --out investor/report.md
 ```
 
+Set `use_funds: false` for a direct-stocks-only plan (no mutual funds or ETFs; the core becomes `core_stocks`).
 Limits (position, group and sector caps, core/satellite split, asset mix, tax rates, SIP split) are set in
 `config/longterm_policy.yaml`. The code is in `src/autotrader/longterm/` and the tests are in `tests/test_longterm.py`.
 Keep personal holdings in `investor/`, which is git-ignored, and never commit them, because this repository may be public.

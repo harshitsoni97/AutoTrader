@@ -18,6 +18,8 @@ DEFAULTS = {
         "max_sector_pct": 25.0,
         "deep_loss_pct": -30.0,
         "core_target_pct": 50.0,
+        "use_funds": True,
+        "core_stocks": [],
         "core_instruments": [{"symbol": "NIFTYBEES", "name": "Nifty 50 ETF", "weight": 100}],
         "asset_mix_target_pct": {"equity": 85, "gold": 10, "debt": 5},
         "asset_class_overrides": {},
@@ -69,3 +71,9 @@ def asset_class(symbol: str, sector: str, policy: dict) -> str:
 
 # Asset classes that count toward the "equity" bucket of the asset mix.
 EQUITY_CLASSES = {"equity", "equity_index"}
+
+
+def core_list(policy: dict) -> list[dict]:
+    """The core buy list: index funds/ETFs, or direct stocks when use_funds is off."""
+    pp = policy["portfolio_policy"]
+    return (pp.get("core_instruments") if pp.get("use_funds", True) else pp.get("core_stocks")) or []

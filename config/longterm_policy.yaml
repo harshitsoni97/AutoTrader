@@ -17,7 +17,26 @@ portfolio_policy:
 
   # Core / satellite: the core is diversified, low-cost and boring.
   core_target_pct: 50.0
-  core_instruments:            # suggested core buys (ETFs trade like stocks on NSE)
+  # false = direct stocks only: no mutual funds or ETFs (index, gold or liquid) are
+  # proposed. Freed cash goes to `core_stocks` instead of `core_instruments`, and
+  # the gold/debt targets are reported but not bought.
+  use_funds: false
+  # Direct-equity core: sector leaders filling the gaps a satellite portfolio
+  # usually leaves (IT, pharma, capital goods, telecom). Edit freely.
+  core_stocks:
+    - symbol: INFY
+      name: Infosys (IT services)
+      weight: 25
+    - symbol: SUNPHARMA
+      name: Sun Pharma (pharma)
+      weight: 25
+    - symbol: LT
+      name: Larsen & Toubro (capital goods)
+      weight: 25
+    - symbol: BHARTIARTL
+      name: Bharti Airtel (telecom)
+      weight: 25
+  core_instruments:            # used when use_funds is true (ETFs trade like stocks on NSE)
     - symbol: NIFTYBEES
       name: Nifty 50 ETF
       weight: 60
@@ -77,11 +96,12 @@ tax_policy:
   # rather than computing their tax.
   non_equity_classes: [gold, silver, debt, reit]
 
-# Monthly SIP plan: how new money is split.
+# Monthly SIP plan: how new money is split. With use_funds false, "core" means
+# the core_stocks and the gold/debt slices are left at 0.
 sip_policy:
   monthly_amount_inr: 10000
   split_pct:
     core: 60
-    satellite_top_up: 25       # topped up into the highest-conviction under-weight holdings
-    gold: 10
-    debt: 5
+    satellite_top_up: 40       # topped up into the highest-conviction under-weight holdings
+    gold: 0
+    debt: 0

@@ -82,6 +82,7 @@ def test_tax_report_skips_gold_and_plans_ltcg_harvest(holdings, policy):
 
 
 def test_rebalance_exit_trim_and_redeploy(holdings, policy):
+    policy["portfolio_policy"]["use_funds"] = True
     plan = plan_rebalance(holdings, policy, {
         "decisions": {"BBB": {"action": "exit"}, "AAA": {"action": "trim", "target_pct": 50},
                       "TINY": {"action": "exit"}},
@@ -94,6 +95,18 @@ def test_rebalance_exit_trim_and_redeploy(holdings, policy):
     assert {"GOLDBEES", "NIFTYBEES"} <= buys
     assert plan["buys_total"] <= plan["sells_total"]
     assert "CCC" in plan["undecided"]
+
+
+def test_rebalance_without_funds_buys_core_stocks_only(holdings, policy):
+    pp = policy["portfolio_policy"]
+    pp["use_funds"] = False
+    pp["core_stocks"] = [{"symbol": "INFY", "weight": 50}, {"symbol": "LT", "weight": 50}]
+    plan = plan_rebalance(holdings, policy, {"decisions": {"BBB": {"action": "exit"}},
+                                              "prices": {"INFY": 100, "LT": 100}})
+    buys = {t["symbol"]: t for t in plan["trades"] if t["side"] == "BUY"}
+    assert set(buys) == {"INFY", "LT"}
+    assert buys["INFY"]["qty"] == buys["LT"]["qty"] > 0
+    assert any("gold" in n for n in plan["notes"])
 
 
 def test_quality_score_and_red_flags():

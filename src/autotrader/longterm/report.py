@@ -38,7 +38,7 @@ def render_analysis(a: dict) -> str:
         f"{s['effective_holdings']} (1 / HHI)",
         f"- {s['winners']} winners (+{inr(s['gain_from_winners'])}), {s['losers']} losers "
         f"({inr(s['loss_from_losers'])})",
-        f"- Index core: {s['core_index_pct']:.1f}%",
+        f"- Core (index ETFs or core stocks): {s['core_index_pct']:.1f}%",
         "",
         "### Flags",
         "",
@@ -105,8 +105,9 @@ def render_rebalance(p: dict) -> str:
         f"LTCG {inr(tx['gross']['ltcg'])}, LTCL {inr(-tx['gross']['ltcl'])}",
         f"- **Estimated tax {inr(tx['tax_inr'])}**; losses to carry forward: "
         f"{inr(tx['carry_forward_stcl'])} ST + {inr(tx['carry_forward_ltcl'])} LT",
-        f"- After: {p['post_holdings']} holdings, index core {p['post_core_pct']:.1f}%",
+        f"- After: {p['post_holdings']} holdings, core {p['post_core_pct']:.1f}%",
     ]
+    lines += [f"- {n}" for n in p.get("notes", [])]
     if p["undecided"]:
         lines.append(f"- Held as-is (no decision yet): {', '.join(p['undecided'])}")
     lines += ["", "### Weights after", "",

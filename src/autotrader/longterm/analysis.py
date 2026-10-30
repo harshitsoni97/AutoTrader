@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from .holdings import Holding
-from .policy import EQUITY_CLASSES, asset_class
+from .policy import EQUITY_CLASSES, asset_class, core_list
 
 MIX_BUCKET = {"equity": "equity", "equity_index": "equity", "gold": "gold", "silver": "gold",
               "debt": "debt", "reit": "real_estate"}
@@ -36,7 +36,8 @@ def analyze(holdings: list[Holding], policy: dict) -> dict:
 
     weights = [r["weight_pct"] / 100 for r in rows]
     hhi = sum(w * w for w in weights)
-    core_pct = sum(r["weight_pct"] for r in rows if r["asset_class"] == "equity_index")
+    core_syms = {c["symbol"] for c in core_list(policy)}
+    core_pct = sum(r["weight_pct"] for r in rows if r["asset_class"] == "equity_index" or r["symbol"] in core_syms)
 
     flags = []
     n = len(rows)
@@ -68,7 +69,7 @@ def analyze(holdings: list[Holding], policy: dict) -> dict:
                       "detail": f"{len(deep)} positions down {abs(pp['deep_loss_pct']):.0f}%+ from cost: "
                                 "re-check the thesis (not a sell signal on its own)"})
     if core_pct < pp["core_target_pct"]:
-        flags.append({"kind": "no_core", "detail": f"index core is {core_pct:.1f}% vs {pp['core_target_pct']}% target"})
+        flags.append({"kind": "no_core", "detail": f"core is {core_pct:.1f}% vs {pp['core_target_pct']}% target"})
     for bucket, target in (pp.get("asset_mix_target_pct") or {}).items():
         have = mix.get(bucket, 0.0)
         if abs(have - target) >= 5:

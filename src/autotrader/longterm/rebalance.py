@@ -14,7 +14,9 @@ Decisions file (YAML), one entry per symbol you have a view on:
 Actions: exit (to 0) | trim (down to target_pct, default max_position_pct) |
 add (up to target_pct) | hold (keep; still trimmed to the single-stock cap).
 Anything without a decision is held as-is and listed under "undecided".
-Money freed is sent to the gold target first, then the index core.
+Money freed is sent to the gold target first, then the core: index ETFs, or
+the direct-stock `core_stocks` when `use_funds` is false (no funds bought,
+gold/debt targets reported only).
 Nothing is ever placed: this writes a plan for a human to execute.
 """
 from __future__ import annotations
@@ -23,7 +25,7 @@ import math
 
 from .analysis import MIX_BUCKET
 from .holdings import Holding
-from .policy import asset_class
+from .policy import asset_class, core_list
 from .tax import Realised, compute_tax, split_sale
 
 
@@ -96,15 +98,20 @@ def plan_rebalance(holdings: list[Holding], policy: dict, decisions: dict) -> di
                     if s in by_sym and MIX_BUCKET.get(asset_class(s, by_sym[s].sector, policy)) == "gold")
     gold_sym = next((s for s in by_sym if MIX_BUCKET.get(asset_class(s, by_sym[s].sector, policy)) == "gold"),
                     "GOLDBEES")
-    buys = []
-    if gold_target > gold_have and cash > 0:
+    buys, notes = [], []
+    use_funds = pp.get("use_funds", True)
+    if not use_funds and gold_target > gold_have:
+        notes.append(f"gold is {gold_have / total * 100:.1f}% vs {gold_target / total * 100:.0f}% target; "
+                     "funds are switched off, so nothing is bought (Sovereign Gold Bonds on the exchange "
+                     "are the non-fund route)")
+    if use_funds and gold_target > gold_have and cash > 0:
         buys.append((gold_sym, min(gold_target - gold_have, cash), "gold up to its asset-mix target"))
         cash -= buys[-1][1]
-    core = pp.get("core_instruments") or []
+    core = core_list(policy)
     wsum = sum(c["weight"] for c in core) or 1
     if cash > 0:
         for c in core:
-            buys.append((c["symbol"], cash * c["weight"] / wsum, f"index core: {c.get('name', c['symbol'])}"))
+            buys.append((c["symbol"], cash * c["weight"] / wsum, f"core: {c.get('name', c['symbol'])}"))
         cash = 0.0
     for sym, amt, why in buys:
         price = by_sym[sym].ltp if sym in by_sym else prices.get(sym)
@@ -134,4 +141,5 @@ def plan_rebalance(holdings: list[Holding], policy: dict, decisions: dict) -> di
         "post_holdings": len(post),
         "post_core_pct": round(sum(v for s, v in post.items() if s in core_syms), 2),
         "undecided": undecided,
+        "notes": notes,
     }

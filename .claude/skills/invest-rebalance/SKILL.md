@@ -29,8 +29,12 @@ Start from `config/longterm_examples/decisions.example.yaml`; copy it to
 | `add` | buy up to `target_pct` from freed cash / `new_cash_inr` |
 | (none) | kept as-is, listed under "undecided": ask the user about each |
 
-Order of money: sells -> adds -> gold to its asset-mix target -> index core by
-`core_instruments` weights. New instruments need a price in `prices:` to get a
+Order of money: sells -> adds -> gold to its asset-mix target -> core by weight.
+The core is `core_instruments` (index ETFs) when `use_funds: true`, or
+`core_stocks` (direct large-cap leaders) when `use_funds: false`. With funds
+off, no mutual fund or ETF is ever proposed and gold is reported but not
+bought (Sovereign Gold Bonds are the non-fund route). Respect the user's
+choice: don't argue for funds once they have said no. New instruments need a price in `prices:` to get a
 share count; without one the plan shows rupees only. Never invent a price.
 
 ## Choosing actions (agree them with the user)
