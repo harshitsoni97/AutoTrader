@@ -11,7 +11,8 @@ Decisions file (YAML), one entry per symbol you have a view on:
     prices: {NIFTYBEES: 290}   # optional, to turn new buys into share counts
     realised_ytd: {stcg: 0, stcl: 0, ltcg: 0, ltcl: 0}
 
-Actions: exit (to 0) | trim (down to target_pct, default max_position_pct) |
+Actions: exit (to 0) | trim (down to target_pct, default max_position_pct; or exactly
+`sell_qty` shares, FIFO) |
 add (up to target_pct) | hold (keep; still trimmed to the single-stock cap).
 Anything without a decision is held as-is and listed under "undecided".
 Money freed is sent to the gold target first, then the core: index ETFs, or
@@ -56,8 +57,10 @@ def plan_rebalance(holdings: list[Holding], policy: dict, decisions: dict) -> di
         elif action in ("hold", "add") and asset_class(h.symbol, h.sector, policy) == "equity":
             target_value = min(h.value, total * pp["max_position_pct"] / 100)
 
+        if action == "trim" and d.get("sell_qty"):
+            target_value = h.value - min(float(d["sell_qty"]), h.qty) * h.ltp
         if target_value < h.value:
-            qty = h.qty if target_value == 0 else math.ceil((h.value - target_value) / h.ltp)
+            qty = h.qty if target_value == 0 else math.ceil(round((h.value - target_value) / h.ltp, 6))
             qty = min(qty, h.qty)
             proceeds = qty * h.ltp
             r = split_sale(h, qty)

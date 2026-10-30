@@ -30,7 +30,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from autotrader.longterm import (analyze, load_holdings, load_policy, plan_rebalance,  # noqa: E402
                                  quality_score, scenario_ev, tax_report)
-from autotrader.longterm.report import render_analysis, render_rebalance, render_tax  # noqa: E402
+from autotrader.longterm.holdings import apply_new_lots  # noqa: E402
+from autotrader.longterm.report import (render_analysis, render_holding_table, render_rebalance,  # noqa: E402
+                                        render_tax)
 
 DISCLAIMER = ("_Educational tooling, not investment advice. The author of this report is not a "
               "SEBI-registered investment adviser. Verify prices, tax rules and lot-wise costs "
@@ -87,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--holdings is required")
     holdings = load_holdings(args.holdings)
     decisions = _yaml(args.decisions)
+    lot_notes = apply_new_lots(holdings, decisions.get("new_lots"))
 
     if args.command == "prices":
         from autotrader.longterm.market import INDEX_KEYS, refresh
@@ -110,8 +113,10 @@ def main(argv: list[str] | None = None) -> int:
         _emit(res, md, args.json)
         return 0
 
+    stats = {}
     if args.prices:
-        live = json.loads(Path(args.prices).read_text())["prices"]
+        price_file = json.loads(Path(args.prices).read_text())
+        live, stats = price_file["prices"], price_file.get("stats", {})
         for h in holdings:
             h.ltp = live.get(h.symbol, h.ltp)
         decisions.setdefault("prices", {})
@@ -145,8 +150,11 @@ def main(argv: list[str] | None = None) -> int:
                  render_analysis(res["analysis"]), "", render_tax(res["tax"])]
         if pnl_note:
             parts += ["", pnl_note]
+        if lot_notes:
+            parts += ["", "Purchases added after the holdings export: " + "; ".join(lot_notes)]
         if args.decisions:
             res["rebalance"] = plan_rebalance(holdings, policy, decisions)
+            parts[4:4] = [render_holding_table(res["analysis"], decisions, res["rebalance"], stats), ""]
             parts += ["", render_rebalance(res["rebalance"])]
         md = "\n".join(parts) + "\n"
 

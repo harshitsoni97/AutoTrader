@@ -31,20 +31,30 @@ class Realised:
 
 
 def split_sale(h: Holding, qty: float) -> Realised:
-    """Gain/loss from selling `qty` shares of `h` at its LTP, FIFO (long-term first)."""
+    """Gain/loss from selling `qty` shares of `h` at its LTP, FIFO: the export's
+    long-term shares first, then its short-term ones, then lots added after it."""
     qty = min(qty, h.qty)
+    base_qty = h.qty if h.base_qty is None else h.base_qty
+    base_avg = h.avg_price if h.base_avg is None else h.base_avg
     lt = min(qty, h.qty_lt or 0.0)
-    st = qty - lt
-    per_share = h.ltp - h.avg_price
+    st_base = min(qty - lt, base_qty - (h.qty_lt or 0.0))
+    pieces = [(lt, base_avg, "lt"), (st_base, base_avg, "st")]
+    left = qty - lt - st_base
+    for lot in h.extra_lots:
+        take = min(left, lot["qty"])
+        pieces.append((take, lot["price"], "st"))
+        left -= take
     r = Realised()
-    for bucket_qty, gain_key, loss_key in ((lt, "ltcg", "ltcl"), (st, "stcg", "stcl")):
-        amt = bucket_qty * per_share
+    gain_total = 0.0
+    for n, cost, term in pieces:
+        amt = n * (h.ltp - cost)
+        gain_total += amt
         if amt > 0:
-            setattr(r, gain_key, getattr(r, gain_key) + amt)
+            setattr(r, f"{term}cg", getattr(r, f"{term}cg") + amt)
         elif amt < 0:
-            setattr(r, loss_key, getattr(r, loss_key) - amt)
-    r.lines.append({"symbol": h.symbol, "qty": qty, "lt_qty": lt, "st_qty": st,
-                    "gain": round(qty * per_share, 2)})
+            setattr(r, f"{term}cl", getattr(r, f"{term}cl") - amt)
+    r.lines.append({"symbol": h.symbol, "qty": qty, "lt_qty": lt, "st_qty": qty - lt,
+                    "gain": round(gain_total, 2)})
     return r
 
 

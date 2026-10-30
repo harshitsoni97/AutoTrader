@@ -159,3 +159,15 @@ def test_pnl_import_defaults_to_short_term(tmp_path):
     r = load_realised(p, {"BBB": "long"})
     assert r["realised_ytd"] == {"stcg": 50.0, "stcl": 0.0, "ltcg": 0.0, "ltcl": 20.0}
     assert r["assumed_short_term"] == ["AAA"]
+
+
+def test_new_lot_keeps_its_own_cost_for_tax(holdings):
+    from autotrader.longterm.holdings import apply_new_lots
+    bbb = holdings[1]  # 50 @ 200 (20 LT), LTP 100
+    apply_new_lots(holdings, [{"symbol": "BBB", "qty": 50, "price": 100}, {"symbol": "NEW", "qty": 2, "price": 10}])
+    assert bbb.qty == 100 and bbb.avg_price == 150 and bbb.qty_lt == 20
+    r = split_sale(bbb, 50)          # FIFO: only the export's old shares
+    assert r.ltcl == pytest.approx(2000) and r.stcl == pytest.approx(3000)
+    r = split_sale(bbb, 100)         # the new lot was bought at 100: no gain/loss on it
+    assert r.stcl == pytest.approx(3000)
+    assert holdings[-1].symbol == "NEW" and holdings[-1].qty_lt == 0

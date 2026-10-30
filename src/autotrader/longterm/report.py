@@ -113,3 +113,40 @@ def render_rebalance(p: dict) -> str:
     lines += ["", "### Weights after", "",
               _table(["symbol", "weight"], [[s, f"{w:.1f}%"] for s, w in p["post_weights_pct"].items()])]
     return "\n".join(lines)
+
+
+ACTION_LABEL = {"exit": "EXIT", "trim": "TRIM", "hold": "HOLD", "add": "ADD"}
+
+
+def render_holding_table(a: dict, decisions: dict, plan: dict, stats: dict | None = None) -> str:
+    """One row per line item: where it stands, what the plan does with it, and why."""
+    dec = {k.upper(): v or {} for k, v in (decisions.get("decisions") or {}).items()}
+    stats = stats or {}
+    post = plan["post_weights_pct"]
+    sold = {t["symbol"]: t for t in plan["trades"] if t["side"] == "SELL"}
+    bought = {t["symbol"]: t for t in plan["trades"] if t["side"] == "BUY"}
+    rows = []
+    for r in a["holdings"]:
+        sym, d, st = r["symbol"], dec.get(r["symbol"], {}), stats.get(r["symbol"], {})
+        action = ACTION_LABEL.get(d.get("action"), "HOLD (undecided)")
+        move = (f"sell {sold[sym]['qty']:g}" if sym in sold else
+                f"buy {bought[sym]['qty']:g}" if sym in bought and bought[sym]["qty"] else "")
+        rows.append([sym, r["sector"].title(), f"{r['qty']:g}", f"{r['avg_price']:.2f}", f"{r['ltp']:.2f}",
+                     inr(r["value"]), f"{r['weight_pct']:.1f}%", f"{r['pnl_pct']:+.0f}%",
+                     f"{st['return_1y_pct']:+.0f}%" if "return_1y_pct" in st else "-",
+                     f"{st['off_high_pct']:+.0f}%" if "off_high_pct" in st else "-",
+                     f"**{action}**", move, f"{post.get(sym, 0):.1f}%",
+                     d.get("why", "") + (f" (when: {d['when']})" if d.get("when") else "")])
+    held = {r["symbol"] for r in a["holdings"]}
+    for sym, t in bought.items():
+        if sym in held:
+            continue
+        st = stats.get(sym, {})
+        rows.append([sym, "New", "-", "-", "-" if t["price"] is None else f"{t['price']:.2f}", "-", "0.0%", "-",
+                     f"{st['return_1y_pct']:+.0f}%" if "return_1y_pct" in st else "-",
+                     f"{st['off_high_pct']:+.0f}%" if "off_high_pct" in st else "-",
+                     "**NEW**", f"buy {t['qty']:g}" if t["qty"] else inr(t["amount"]),
+                     f"{post.get(sym, 0):.1f}%", t.get("why", "")])
+    return "\n".join(["## Every holding: where it stands and what to do", "",
+                      _table(["symbol", "sector", "qty", "avg", "price", "value", "weight", "P&L", "1y",
+                              "vs 52w high", "action", "trade", "weight after", "why"], rows)])

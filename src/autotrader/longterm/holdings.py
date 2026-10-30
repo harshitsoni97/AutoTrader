@@ -6,7 +6,7 @@ Reads .xlsx (needs openpyxl) or .csv. The header row is found by looking for a
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +31,11 @@ class Holding:
     sector: str = "UNKNOWN"
     isin: str = ""
     qty_lt: Optional[float] = None  # None: the export does not say
+    # Purchases made after the export (see apply_new_lots). The export's own
+    # shares keep their average in base_avg; these lots are newest, so FIFO sells them last.
+    extra_lots: list = field(default_factory=list)
+    base_qty: Optional[float] = None
+    base_avg: Optional[float] = None
 
     @property
     def qty_st(self) -> float:
@@ -127,3 +132,30 @@ def parse_rows(rows: list[list]) -> list[Holding]:
 
 def load_holdings(path: str | Path) -> list[Holding]:
     return parse_rows(_rows_from_file(Path(path)))
+
+
+def apply_new_lots(holdings: list[Holding], lots: list[dict]) -> list[str]:
+    """Add purchases made after the export: [{symbol, qty, price, sector?, isin?}].
+
+    Quantity and average become the blended totals (what the broker will show
+    tomorrow); the lot itself is kept so tax uses its real cost. New shares are
+    short-term. Returns one line per lot for the report.
+    """
+    by_sym = {h.symbol: h for h in holdings}
+    notes = []
+    for lot in lots or []:
+        sym, q, px = str(lot["symbol"]).upper(), float(lot["qty"]), float(lot["price"])
+        h = by_sym.get(sym)
+        if h is None:
+            h = Holding(symbol=sym, qty=0.0, avg_price=0.0, ltp=px, sector=str(lot.get("sector", "UNKNOWN")).upper(),
+                        isin=str(lot.get("isin", "")), qty_lt=0.0)
+            holdings.append(h)
+            by_sym[sym] = h
+        if h.base_qty is None:
+            h.base_qty, h.base_avg = h.qty, h.avg_price
+        h.extra_lots.append({"qty": q, "price": px, "date": str(lot.get("date", ""))})
+        h.avg_price = (h.qty * h.avg_price + q * px) / (h.qty + q)
+        h.qty += q
+        notes.append(f"{sym}: +{q:g} @ {px:.2f}{' on ' + str(lot['date']) if lot.get('date') else ''} "
+                     f"(now {h.qty:g} shares, average {h.avg_price:.2f})")
+    return notes
