@@ -1,0 +1,25 @@
+# Copy to investor/research/SYMBOL.yaml. Numbers are illustrative, not a real company.
+symbol: EXAMPLE
+source: "annual report FY26 + screener.in consolidated, fetched 2026-10-30"
+financial: false            # true for banks / NBFCs / AMCs / insurers
+metrics:                    # for `quality`
+  roce_pct: 22
+  roe_pct: 18
+  sales_cagr_5y_pct: 14
+  profit_cagr_5y_pct: 17
+  ocf_to_pat: 0.95
+  debt_to_equity: 0.2
+  promoter_holding_pct: 55
+  promoter_pledge_pct: 0
+  pe_vs_5y_median: 1.1
+  peg: 1.6
+  # banks: gnpa_pct, car_pct, roa_pct
+# for `ev`: target = EPS x (1+g)^years x exit PE, written out in each name
+price: 1000
+horizon_years: 5
+hurdle_cagr_pct: 11
+dividend_yield_pct: 0.8
+scenarios:
+  - {name: bull, prob: 0.25, target: 2300}   # EPS 40 x 1.18^5 = 91.5 x 25 PE
+  - {name: base, prob: 0.50, target: 1610}   # EPS 40 x 1.13^5 = 73.7 x 22 PE
+  - {name: bear, prob: 0.25, target: 830}    # EPS 40 x 1.05^5 = 51.1 x 16 PE

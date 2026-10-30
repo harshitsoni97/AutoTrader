@@ -1,0 +1,87 @@
+# Long-term investment advisor policy (Indian markets).
+# Used by `scripts/longterm_advisor.py` and the invest-* Claude skills.
+# Every limit below is a guard-rail the tools check against; none of them
+# places an order. Edit to taste: these are starting points, not advice.
+
+portfolio_policy:
+  # How many separate stocks a portfolio this size can actually be followed with.
+  # Below ~₹10L, 12-20 names is plenty; more than that is diversification in
+  # name only and mostly tracks the index with extra cost and effort.
+  target_holdings_min: 12
+  target_holdings_max: 20
+  min_position_pct: 2.0        # anything smaller is "too small to matter"
+  max_position_pct: 10.0       # single stock cap (satellite)
+  max_group_pct: 15.0          # one business group / demerged twins (e.g. TMPV+TMCV)
+  max_sector_pct: 25.0
+  deep_loss_pct: -30.0         # flag for a thesis check, never an automatic sell
+
+  # Core / satellite: the core is diversified, low-cost and boring.
+  core_target_pct: 50.0
+  core_instruments:            # suggested core buys (ETFs trade like stocks on NSE)
+    - symbol: NIFTYBEES
+      name: Nifty 50 ETF
+      weight: 60
+    - symbol: JUNIORBEES
+      name: Nifty Next 50 ETF
+      weight: 25
+    - symbol: MID150BEES
+      name: Nifty Midcap 150 ETF
+      weight: 15
+
+  # Asset mix across the investable portfolio (equity holdings + ETFs).
+  # Emergency fund (6 months of expenses) should sit outside, in a liquid fund/FD.
+  asset_mix_target_pct:
+    equity: 85
+    gold: 10
+    debt: 5
+
+  # Symbols that are not single stocks. Anything else is treated as equity.
+  asset_class_overrides:
+    GOLDBEES: gold
+    GOLDBEES-E: gold
+    GOLDIETF: gold
+    SILVERBEES: silver
+    LIQUIDBEES: debt
+    LIQUIDCASE: debt
+    NIFTYBEES: equity_index
+    JUNIORBEES: equity_index
+    MID150BEES: equity_index
+    BANKBEES: equity_index
+    NXST-RR: reit
+    EMBASSY-RR: reit
+    MINDSPACE-RR: reit
+    BIRET-RR: reit
+
+  # Business groups: names that move together. Used for the group cap.
+  groups:
+    Tata Motors (demerged): [TMPV, TMCV]
+    Tata group: [TATAPOWER, TATACONSUM, TATATECH, TITAN, INDHOTEL, TMPV, TMCV, TCS, TATASTEEL]
+    NTPC group: [NTPC, NTPCGREEN]
+    Reliance group: [RELIANCE, JIOFIN]
+    Govt PSU: [BHEL, NATIONALUM, NHPC, NTPC, NTPCGREEN, PFC, SBIN, UNIONBANK, MRPL, GMRAIRPORT]
+
+# Indian capital-gains tax on listed equity / equity ETFs (Finance Act 2024,
+# for sales on or after 23 July 2024). Check the current Finance Act before
+# relying on these numbers; update them here when the rules change.
+tax_policy:
+  stcg_rate_pct: 20.0          # held 12 months or less (Sec 111A)
+  ltcg_rate_pct: 12.5          # held more than 12 months (Sec 112A)
+  ltcg_exemption_inr: 125000   # per financial year, on LTCG
+  cess_pct: 4.0                # health & education cess on the tax
+  # Approximate round-trip friction for a delivery sell: STT 0.1%, exchange,
+  # SEBI, stamp duty on the rebuy, GST, plus the DP charge per scrip sold.
+  sell_cost_pct: 0.12
+  dp_charge_inr: 15.93
+  # Gold ETFs are not equity-oriented: gains are taxed differently (LTCG at 12.5%
+  # after 12 months for listed units, STCG at slab rate). The tool flags them
+  # rather than computing their tax.
+  non_equity_classes: [gold, silver, debt, reit]
+
+# Monthly SIP plan: how new money is split.
+sip_policy:
+  monthly_amount_inr: 10000
+  split_pct:
+    core: 60
+    satellite_top_up: 25       # topped up into the highest-conviction under-weight holdings
+    gold: 10
+    debt: 5

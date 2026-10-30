@@ -1,0 +1,11 @@
+# Copy to investor/decisions.yaml (git-ignored) and edit.
+# Actions: exit | trim (target_pct) | hold | add (target_pct). Symbols as in your holdings export.
+new_cash_inr: 0                 # fresh money to deploy with this rebalance
+realised_ytd: {stcg: 0, stcl: 0, ltcg: 0, ltcl: 0}   # already booked this FY (broker tax P&L)
+prices: {}                      # e.g. {NIFTYBEES: 290.5, JUNIORBEES: 760.0}: turns ₹ into share counts
+decisions:
+  BIGBANK:  {action: hold, why: "core financial; thesis in investor/theses/BIGBANK.md"}
+  OVERSIZE: {action: trim, target_pct: 8, why: "over the 10% single-stock cap"}
+  DUPLICATE: {action: exit, why: "same job as BIGBANK, weaker franchise"}
+  TOKEN:    {action: exit, why: "0.3% position, no thesis"}
+  QUALITY:  {action: add, target_pct: 5, why: "high-conviction, under-weight"}

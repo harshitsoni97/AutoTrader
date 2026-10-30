@@ -27,7 +27,8 @@ A production-grade, multi-agent intraday trading system for Indian equities (NSE
 19. [Testing](#testing)
 20. [Project Structure](#project-structure)
 21. [Extending the Platform](#extending-the-platform)
-22. [Disclaimer](#disclaimer)
+22. [Long-Term Investment Advisor](#long-term-investment-advisor)
+23. [Disclaimer](#disclaimer)
 
 ---
 
@@ -897,6 +898,39 @@ Replace the `_store` dict in `memory/short_term.py` with a Qdrant client:
 from qdrant_client import QdrantClient
 self._client = QdrantClient(url=os.getenv("QDRANT_URL"))
 ```
+
+---
+
+## Long-Term Investment Advisor
+
+A separate, offline toolkit for **long-term** Indian equity portfolios, modelled on skill packs such as
+[day-trader-skill](https://github.com/Jakeschincariol/day-trader-skill) and
+[ai-investment-skills](https://github.com/tellmefrankie/ai-investment-skills) and rebuilt for NSE/BSE investors.
+It reads a broker holdings export and writes a plan for you to act on. It never places an order.
+
+| Claude skill | job |
+|---|---|
+| `/invest-advisor` | entry point: runs the full review below |
+| `/invest-portfolio-doctor` | allocation, concentration, token positions, group/sector caps, asset mix |
+| `/invest-tax-harvest` | STCG 20% / LTCG 12.5% with the ₹1.25L exemption, set-off rules, loss and LTCG harvesting |
+| `/invest-research` | fundamentals quality score (ROCE, OCF/PAT, pledge, PE vs 5y median; GNPA/CAR for banks) |
+| `/invest-ev` | bull/base/bear scenarios against an index hurdle |
+| `/invest-thesis` | per-holding thesis journal and quarterly review |
+| `/invest-rebalance` | decisions → whole-share trade list, tax impact, core ETFs + gold, SIP split |
+
+```bash
+mkdir -p investor && cp ~/Downloads/holdings.xlsx investor/        # investor/ is git-ignored
+cp config/longterm_examples/decisions.example.yaml investor/decisions.yaml
+python scripts/longterm_advisor.py analyze   --holdings investor/holdings.xlsx
+python scripts/longterm_advisor.py tax       --holdings investor/holdings.xlsx --ytd investor/decisions.yaml
+python scripts/longterm_advisor.py rebalance --holdings investor/holdings.xlsx --decisions investor/decisions.yaml
+python scripts/longterm_advisor.py report    --holdings investor/holdings.xlsx --decisions investor/decisions.yaml \
+    --out investor/report.md
+```
+
+Limits (position, group and sector caps, core/satellite split, asset mix, tax rates, SIP split) are set in
+`config/longterm_policy.yaml`. The code is in `src/autotrader/longterm/` and the tests are in `tests/test_longterm.py`.
+Keep personal holdings in `investor/`, which is git-ignored, and never commit them, because this repository may be public.
 
 ---
 
