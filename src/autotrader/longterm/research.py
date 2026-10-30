@@ -55,8 +55,14 @@ def quality_score(metrics: dict, financial: bool = False) -> dict:
         red_flags.append("profits shrank over 5 years")
     if not financial and (metrics.get("debt_to_equity") or 0) > 2:
         red_flags.append("debt/equity above 2")
+    if metrics.get("net_profit_latest_cr") is not None and metrics["net_profit_latest_cr"] < 0:
+        red_flags.append("loss-making: the quality score can't stand in for a profit")
+    if (metrics.get("other_income_to_pbt") or 0) > 0.5:
+        red_flags.append("most of last year's profit is other income (one-offs): ROE and P/E are distorted")
     score = round(got / possible * 100) if possible else None
+    loss = metrics.get("net_profit_latest_cr") is not None and metrics["net_profit_latest_cr"] < 0
     verdict = ("insufficient data" if score is None or len(missing) > len(rules) / 2 else
+               "loss-making: speculative" if loss else
                "compounder-grade" if score >= 75 and not red_flags else
                "decent, watch valuation" if score >= 55 else
                "weak: needs a special reason to own")

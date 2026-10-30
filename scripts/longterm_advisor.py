@@ -9,6 +9,7 @@
     python scripts/longterm_advisor.py quality   --metrics investor/research/TITAN.yaml
     python scripts/longterm_advisor.py ev        --scenarios investor/research/TITAN.yaml
     python scripts/longterm_advisor.py prices    --holdings investor/holdings.xlsx   # Upstox -> investor/prices.json
+    python scripts/longterm_advisor.py screener  TMPV LT        # screener.in -> investor/research/<SYMBOL>.yaml
 
 Pass --prices investor/prices.json to analyze/tax/rebalance/report to use live
 prices instead of the export's previous close.
@@ -49,7 +50,9 @@ def _emit(obj, md: str, as_json: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["analyze", "tax", "rebalance", "report", "quality", "ev", "prices"])
+    ap.add_argument("command", choices=["analyze", "tax", "rebalance", "report", "quality", "ev", "prices",
+                                        "screener"])
+    ap.add_argument("symbols", nargs="*", help="`screener`: NSE symbols (default: every holding)")
     ap.add_argument("--holdings", help="broker holdings export (.xlsx or .csv)")
     ap.add_argument("--policy", help="policy YAML (default config/longterm_policy.yaml)")
     ap.add_argument("--decisions", help="decisions YAML for rebalance/report")
@@ -83,6 +86,36 @@ def main(argv: list[str] | None = None) -> int:
                            + [f"expected {res['expected_price']:.0f} = {res['expected_cagr_pct']:+.1f}%/yr vs "
                               f"hurdle {res['hurdle_cagr_pct']}%: {res['verdict']}"])
         _emit(res, md, args.json)
+        return 0
+
+    if args.command == "screener":
+        import time
+        from autotrader.longterm.screener import snapshot
+        # SYMBOL or SYMBOL=<screener id> when Screener's page id differs (e.g. NSE=544937)
+        pages = dict(x.upper().split("=", 1) if "=" in x else (x.upper(), None) for x in args.symbols)
+        syms = list(pages) or [h.symbol for h in load_holdings(args.holdings)]
+        out_dir = Path(args.out or "investor/research")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        lines, results = [], {}
+        for i, sym in enumerate(syms):
+            if i:
+                time.sleep(1.5)
+            path = out_dir / f"{sym}.yaml"
+            old = _yaml(str(path)) if path.exists() else {}
+            try:
+                snap = snapshot(sym.split("-")[0], page=pages.get(sym))
+            except Exception as e:  # one bad page must not stop the batch
+                lines.append(f"{sym}: failed ({e})")
+                continue
+            # keep the user's own notes and scenarios; refresh the fetched numbers
+            merged = {**old, **{k: v for k, v in snap.items() if k != "symbol"}, "symbol": sym}
+            merged["metrics"] = {**(old.get("metrics") or {}), **snap["metrics"]}
+            path.write_text(yaml.safe_dump(merged, sort_keys=False, allow_unicode=True))
+            res = quality_score(merged["metrics"], financial=bool(merged.get("financial")))
+            results[sym] = res
+            lines.append(f"{sym}: {res['score']} ({res['verdict']})"
+                         + (f"; red flags: {'; '.join(res['red_flags'])}" if res["red_flags"] else ""))
+        _emit(results, "\n".join(lines), args.json)
         return 0
 
     if not args.holdings:

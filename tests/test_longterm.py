@@ -171,3 +171,46 @@ def test_new_lot_keeps_its_own_cost_for_tax(holdings):
     r = split_sale(bbb, 100)         # the new lot was bought at 100: no gain/loss on it
     assert r.stcl == pytest.approx(3000)
     assert holdings[-1].symbol == "NEW" and holdings[-1].qty_lt == 0
+
+
+SCREENER_HTML = """
+<ul id="top-ratios">
+ <li><span class="name">Current Price</span><span class="value">₹ 100</span></li>
+ <li><span class="name">Stock P/E</span><span class="value">20.0</span></li>
+ <li><span class="name">High / Low</span><span class="value">₹ 120 / 80</span></li>
+</ul>
+<table class="ranges-table"><tr><th>Compounded Sales Growth</th></tr>
+ <tr><td>5 Years:</td><td>14%</td></tr></table>
+<table class="ranges-table"><tr><th>Compounded Profit Growth</th></tr>
+ <tr><td>5 Years:</td><td>18%</td></tr></table>
+<table class="ranges-table"><tr><th>Return on Equity</th></tr>
+ <tr><td>3 Years:</td><td>21%</td></tr></table>
+<section id="profit-loss"><table><thead><tr><th></th>
+ <th>Mar 2022</th><th>Mar 2023</th><th>Mar 2024</th><th>Mar 2025</th><th>Mar 2026</th><th>TTM</th></tr></thead>
+ <tbody><tr><td>Net Profit +</td><td>10</td><td>10</td><td>10</td><td>10</td><td>10</td><td>11</td></tr>
+ <tr><td>Other Income +</td><td>1</td><td>1</td><td>1</td><td>1</td><td>9</td><td>9</td></tr>
+ <tr><td>Profit before tax</td><td>13</td><td>13</td><td>13</td><td>13</td><td>13</td><td>14</td></tr></tbody></table></section>
+<section id="balance-sheet"><table><thead><tr><th></th><th>Mar 2026</th></tr></thead>
+ <tbody><tr><td>Equity Capital</td><td>10</td></tr><tr><td>Reserves</td><td>90</td></tr>
+ <tr><td>Borrowings +</td><td>20</td></tr></tbody></table></section>
+<section id="cash-flow"><table><thead><tr><th></th>
+ <th>Mar 2022</th><th>Mar 2023</th><th>Mar 2024</th><th>Mar 2025</th><th>Mar 2026</th></tr></thead>
+ <tbody><tr><td>Cash from Operating Activity +</td><td>9</td><td>9</td><td>9</td><td>9</td><td>9</td></tr></tbody></table></section>
+<section id="ratios"><table><thead><tr><th></th><th>Mar 2024</th><th>Mar 2025</th><th>Mar 2026</th></tr></thead>
+ <tbody><tr><td>ROCE %</td><td>18%</td><td>20%</td><td>22%</td></tr></tbody></table></section>
+<section id="shareholding"><table><thead><tr><th></th><th>Sep 2026</th></tr></thead>
+ <tbody><tr><td>Promoters +</td><td>55.00%</td></tr></tbody></table></section>
+"""
+
+
+def test_screener_parse_and_metrics():
+    pytest.importorskip("bs4")
+    from autotrader.longterm.screener import derive_metrics, parse
+    d = derive_metrics(parse(SCREENER_HTML))
+    assert d["financial"] is False
+    assert d["metrics"] == {"sales_cagr_5y_pct": 14.0, "profit_cagr_5y_pct": 18.0, "roe_pct": 21.0,
+                            "roce_pct": 20.0, "ocf_to_pat": 0.9, "debt_to_equity": 0.2,
+                            "promoter_holding_pct": 55.0, "other_income_to_pbt": 0.69,
+                            "net_profit_latest_cr": 11.0}
+    q = quality_score(d["metrics"])
+    assert any("other income" in f for f in q["red_flags"])
