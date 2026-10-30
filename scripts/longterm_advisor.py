@@ -8,6 +8,10 @@
                                                  --out investor/report.md
     python scripts/longterm_advisor.py quality   --metrics investor/research/TITAN.yaml
     python scripts/longterm_advisor.py ev        --scenarios investor/research/TITAN.yaml
+    python scripts/longterm_advisor.py prices    --holdings investor/holdings.xlsx   # Upstox -> investor/prices.json
+
+Pass --prices investor/prices.json to analyze/tax/rebalance/report to use live
+prices instead of the export's previous close.
 
 Add --json to any command for machine-readable output. Personal files live
 in investor/ (git-ignored).
@@ -43,13 +47,15 @@ def _emit(obj, md: str, as_json: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["analyze", "tax", "rebalance", "report", "quality", "ev"])
+    ap.add_argument("command", choices=["analyze", "tax", "rebalance", "report", "quality", "ev", "prices"])
     ap.add_argument("--holdings", help="broker holdings export (.xlsx or .csv)")
     ap.add_argument("--policy", help="policy YAML (default config/longterm_policy.yaml)")
     ap.add_argument("--decisions", help="decisions YAML for rebalance/report")
     ap.add_argument("--ytd", help="YAML with realised_ytd {stcg, stcl, ltcg, ltcl} (defaults to --decisions)")
     ap.add_argument("--metrics", help="YAML with fundamentals for `quality`")
     ap.add_argument("--scenarios", help="YAML with price/horizon/scenarios for `ev`")
+    ap.add_argument("--prices", help="prices JSON from the `prices` command: overrides the export's LTP")
+    ap.add_argument("--no-stats", action="store_true", help="`prices`: skip 52-week stats (one call per symbol)")
     ap.add_argument("--out", help="write the markdown here as well as printing it")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
@@ -79,6 +85,35 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--holdings is required")
     holdings = load_holdings(args.holdings)
     decisions = _yaml(args.decisions)
+
+    if args.command == "prices":
+        from autotrader.longterm.market import INDEX_KEYS, refresh
+        pp = policy["portfolio_policy"]
+        symbols = {h.symbol: h.isin for h in holdings}
+        for c in (pp.get("core_instruments") or []) + (pp.get("core_stocks") or []):
+            symbols.setdefault(c["symbol"], "")
+        for sym in (decisions.get("decisions") or {}):
+            symbols.setdefault(sym.upper(), "")
+        symbols.update({name: "" for name in INDEX_KEYS})
+        out = Path(args.out or "investor/prices.json")
+        try:
+            res = refresh(symbols, out, with_stats=not args.no_stats)
+        except (OSError, RuntimeError) as e:  # URLError is an OSError
+            print(f"Upstox unreachable ({e}). If this runs in a sandbox, allow api.upstox.com and "
+                  "assets.upstox.com in its network settings.", file=sys.stderr)
+            return 2
+        md = f"{len(res['prices'])} prices from Upstox at {res['as_of']} -> {out}"
+        if res["unresolved"]:
+            md += f"\nNo instrument key for: {', '.join(res['unresolved'])}"
+        _emit(res, md, args.json)
+        return 0
+
+    if args.prices:
+        live = json.loads(Path(args.prices).read_text())["prices"]
+        for h in holdings:
+            h.ltp = live.get(h.symbol, h.ltp)
+        decisions.setdefault("prices", {})
+        decisions["prices"] = {**live, **(decisions["prices"] or {})}
     ytd = _yaml(args.ytd).get("realised_ytd") if args.ytd else decisions.get("realised_ytd")
 
     if args.command == "analyze":
@@ -101,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
             parts += ["", render_rebalance(res["rebalance"])]
         md = "\n".join(parts) + "\n"
 
-    if args.out:
+    if args.out and args.command != "prices":
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(md)
     _emit(res, md, args.json)

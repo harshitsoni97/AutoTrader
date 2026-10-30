@@ -19,6 +19,21 @@ The tools in this repo are offline. This skill uses WebSearch / WebFetch
 for live context. If those are unavailable, ask the user to paste headlines
 instead, and never fill gaps from memory without saying how old it is.
 
+## 0. Live prices (Upstox)
+
+```bash
+python3 scripts/longterm_advisor.py prices --holdings investor/holdings.xlsx --decisions investor/decisions.yaml
+python3 scripts/longterm_advisor.py report --holdings investor/holdings.xlsx --decisions investor/decisions.yaml \
+    --prices investor/prices.json --out investor/report.md
+```
+
+Needs `UPSTOX_ANALYTICS_TOKEN` (read-only; create it in the Upstox developer
+console) and network access to `api.upstox.com` and `assets.upstox.com`. It
+writes the last price, 52-week high/low, 1-year return and distance from the
+high for every holding, the core ETFs and the Nifty indices, and `--prices`
+then replaces the export's stale previous close everywhere. If it can't reach
+Upstox, say so and carry on with the export's prices. Never invent prices.
+
 ## 1. Macro backdrop (one table, with a date on every number)
 
 | item | where to look |

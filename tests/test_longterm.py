@@ -135,3 +135,17 @@ def test_inr_grouping():
     assert inr(1234567) == "₹12,34,567"
     assert inr(-83854.9) == "-₹83,855"
     assert inr(999) == "₹999"
+
+
+def test_upstox_key_resolution_and_parsing():
+    from autotrader.longterm.market import candle_stats, parse_ltp, resolve_keys
+    keys = resolve_keys({"TMPV": "INE155A01022", "NIFTYBEES": "", "Nifty 50": "", "NOPE": ""},
+                        master={"NIFTYBEES": "NSE_EQ|INF204KB14I2"})
+    assert keys == {"TMPV": "NSE_EQ|INE155A01022", "NIFTYBEES": "NSE_EQ|INF204KB14I2",
+                    "Nifty 50": "NSE_INDEX|Nifty 50"}
+    payload = {"status": "success", "data": {
+        "NSE_EQ:TMPV": {"last_price": 270.5, "instrument_token": "NSE_EQ|INE155A01022"},
+        "NSE_INDEX:Nifty 50": {"last_price": 22950.1, "instrument_token": "NSE_INDEX|Nifty 50"}}}
+    assert parse_ltp(payload, keys) == {"TMPV": 270.5, "Nifty 50": 22950.1}
+    stats = candle_stats([["t2", 0, 120, 95, 110, 0, 0], ["t1", 0, 105, 80, 100, 0, 0]])
+    assert stats == {"high_52w": 120, "low_52w": 80, "return_1y_pct": 10.0, "off_high_pct": -8.3}
