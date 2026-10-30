@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         pp = policy["portfolio_policy"]
         symbols = {h.symbol: h.isin for h in holdings}
         for c in (pp.get("core_instruments") or []) + (pp.get("core_stocks") or []):
-            symbols.setdefault(c["symbol"], "")
+            symbols.setdefault(c["symbol"], c.get("isin", ""))
         for sym in (decisions.get("decisions") or {}):
             symbols.setdefault(sym.upper(), "")
         symbols.update({name: "" for name in INDEX_KEYS})

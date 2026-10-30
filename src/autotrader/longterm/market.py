@@ -34,7 +34,8 @@ def _token() -> str:
 
 
 def _get(url: str, timeout: float = 20) -> dict:
-    req = Request(url, headers={"Authorization": f"Bearer {_token()}", "Accept": "application/json"})
+    req = Request(url, headers={"Authorization": f"Bearer {_token()}", "Accept": "application/json",
+                                "User-Agent": "autotrader-longterm/1.0"})
     with urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 
@@ -54,7 +55,9 @@ def resolve_keys(symbols: dict[str, str], master: dict[str, str] | None = None) 
     """symbols: {SYMBOL: ISIN or ""} -> {SYMBOL: instrument_key}. Unresolvable ones are dropped."""
     out = {}
     for sym, isin in symbols.items():
-        if sym.upper() in INDEX_KEYS:
+        if "|" in isin:  # an explicit instrument key
+            out[sym] = isin
+        elif sym.upper() in INDEX_KEYS:
             out[sym] = INDEX_KEYS[sym.upper()]
         elif isin:
             out[sym] = f"NSE_EQ|{isin}"
@@ -105,12 +108,28 @@ def refresh(symbols: dict[str, str], out: Path, with_stats: bool = True,
             master_cache: Path | None = None) -> dict:
     master = None
     if any(not isin and s.upper() not in INDEX_KEYS for s, isin in symbols.items()):
-        master = instrument_master(master_cache or out.parent / "upstox_nse_master.json")
+        try:
+            master = instrument_master(master_cache or out.parent / "upstox_nse_master.json")
+        except OSError:
+            master = None  # symbols without an ISIN are reported as unresolved
     keys = resolve_keys(symbols, master)
     prices = fetch_ltp(keys)
-    stats = {s: fetch_year_stats(k) for s, k in keys.items()} if with_stats else {}
+    # Some ISINs trade only on BSE (e.g. NSE's own shares): retry those there.
+    retry = {s: k.replace("NSE_EQ|", "BSE_EQ|") for s, k in keys.items()
+             if s not in prices and k.startswith("NSE_EQ|")}
+    if retry:
+        bse = fetch_ltp(retry)
+        prices.update(bse)
+        keys.update({s: retry[s] for s in bse})
+    stats, failed = {}, []
+    for sym, key in (keys.items() if with_stats else ()):
+        try:
+            stats[sym] = fetch_year_stats(key)
+        except OSError:
+            failed.append(sym)
     result = {"as_of": datetime.datetime.now().isoformat(timespec="seconds"), "source": "upstox",
-              "prices": prices, "stats": stats, "unresolved": sorted(set(symbols) - set(keys))}
+              "prices": prices, "stats": stats, "stats_failed": failed,
+              "unresolved": sorted(set(symbols) - set(prices))}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2))
     return result

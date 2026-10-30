@@ -24,27 +24,35 @@ portfolio_policy:
   use_funds: true
   # Direct-equity core: sector leaders filling the gaps a satellite portfolio
   # usually leaves (IT, pharma, capital goods, telecom). Edit freely.
+  # isin lets the Upstox price fetcher find instruments you don't hold yet.
   core_stocks:
     - symbol: INFY
+      isin: INE009A01021
       name: Infosys (IT services)
       weight: 25
     - symbol: SUNPHARMA
+      isin: INE044A01036
       name: Sun Pharma (pharma)
       weight: 25
     - symbol: LT
+      isin: INE018A01030
       name: Larsen & Toubro (capital goods)
       weight: 25
     - symbol: BHARTIARTL
+      isin: INE397D01024
       name: Bharti Airtel (telecom)
       weight: 25
   core_instruments:            # used when use_funds is true (ETFs trade like stocks on NSE)
     - symbol: NIFTYBEES
+      isin: INF204KB14I2
       name: Nifty 50 ETF
       weight: 60
     - symbol: JUNIORBEES
+      isin: INF732E01045
       name: Nifty Next 50 ETF
       weight: 25
     - symbol: MID150BEES
+      isin: INF204KB1V68
       name: Nifty Midcap 150 ETF
       weight: 15
 
