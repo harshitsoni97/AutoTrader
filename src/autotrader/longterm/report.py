@@ -150,3 +150,15 @@ def render_holding_table(a: dict, decisions: dict, plan: dict, stats: dict | Non
     return "\n".join(["## Every holding: where it stands and what to do", "",
                       _table(["symbol", "sector", "qty", "avg", "price", "value", "weight", "P&L", "1y",
                               "vs 52w high", "action", "trade", "weight after", "why"], rows)])
+
+
+def render_uk(u: dict) -> str:
+    lines = ["## UK view (you are UK tax-resident; indicative)", ""]
+    if u["gbp_inr"]:
+        lines.append(f"- At about ₹{u['gbp_inr']:g}/£: net capital gain/loss for the UK tax year {inr(u['cgt_net_inr'])} "
+                     f"(about {'-' if u['cgt_net_gbp'] < 0 else ''}£{abs(u['cgt_net_gbp']):,.0f}); annual exempt amount £{u['annual_exempt_amount_gbp']:,}; "
+                     f"sale proceeds about £{u['proceeds_gbp']:,.0f}.")
+    lines += [f"- {n}" for n in u["notes"]]
+    lines.append("- UK gains use pound values on each date and one pooled average cost per share, with a 30-day "
+                 "rule on rebuys. Confirm with a UK tax adviser before filing.")
+    return "\n".join(lines)

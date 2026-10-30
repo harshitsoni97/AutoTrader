@@ -39,7 +39,8 @@ invest-portfolio-doctor -> invest-tax-harvest -> invest-research / invest-ev -> 
 
 1. **Get the file.** Copy the export to `investor/holdings-YYYY-MM-DD.xlsx`.
    Ask once for: realised gains/losses already booked this financial year
-   (broker tax P&L), monthly SIP capacity, horizon, and whether an emergency
+   (broker tax P&L), monthly SIP capacity, horizon, **tax residency** (a UK or other non-Indian
+   tax resident changes the vehicle choice and the tax: see `/invest-tax-harvest`), and whether an emergency
    fund (6 months of expenses) already sits outside the portfolio. If there is
    no emergency fund, that comes before any equity buying.
 2. **Diagnose** (`/invest-portfolio-doctor`). Lead with the 3-5 flags that

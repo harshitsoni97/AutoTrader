@@ -54,6 +54,29 @@ Gold ETFs, REITs and debt are listed as "not equity-taxed" and left out.
 - **Friction**: each sell costs ~0.1% STT plus ~₹16 DP charge per scrip per day;
   selling a ₹40 position to harvest ₹5 of loss is not worth it.
 
+## UK tax-resident investors
+
+Set `residency: {uk_tax_resident: true, gbp_inr: <rate>}` (and usually
+`use_funds: false`) in the user's own `investor/decisions.yaml`, never in the
+repo. Then `rebalance`/`report` add a UK view. What changes:
+
+- **Both countries tax the gain.** India taxes first; the UK taxes too (CGT 18%/24% above the £3,000 annual
+  exempt amount) and credits the Indian tax under the India-UK treaty. The UK tax year runs 6 April to 5 April.
+- **Indian ETFs and mutual funds are UK non-reporting offshore funds.** Gains are taxed as income, and losses
+  are not allowable. Don't plan to buy them; hold index exposure in a UK ISA instead.
+- **The UK uses one pooled average cost per share** (section 104), not FIFO, plus a 30-day rule: a rebuy of
+  the same share within 30 days of a sale is matched to that sale. "Sell and rebuy" harvesting does nothing
+  for UK tax.
+- **Gains are measured in pounds**, at each date's exchange rate. A weaker rupee shrinks rupee gains and
+  deepens rupee losses.
+- **Losses must be claimed.** Report them on Self Assessment within 4 years and they carry forward with no
+  time limit. Dividends are taxable in the UK too, with credit for Indian TDS.
+- **New arrivals:** the 4-year Foreign Income and Gains (FIG) regime can exempt foreign gains. Ask when the
+  user became UK resident.
+- **Indian residential status:** a UK resident is usually an Indian NRI. That means NRI (NRO/NRE, PIS)
+  accounts instead of resident ones, no intraday trading, and TDS deducted by the broker on gains. Ask the
+  user to confirm their account type.
+
 ## Caveats to state
 
 - Gains use the broker's blended average price, not lot-wise cost.

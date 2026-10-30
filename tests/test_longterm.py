@@ -214,3 +214,15 @@ def test_screener_parse_and_metrics():
                             "net_profit_latest_cr": 11.0}
     q = quality_score(d["metrics"])
     assert any("other income" in f for f in q["red_flags"])
+
+
+def test_uk_view_flags_indian_funds_and_converts(holdings, policy):
+    from autotrader.longterm.uk import uk_plan_view
+    policy["portfolio_policy"]["use_funds"] = True
+    plan = plan_rebalance(holdings, policy, {"decisions": {"BBB": {"action": "exit"}}, "prices": {"NIFTYBEES": 100}})
+    u = uk_plan_view(holdings, policy, plan, {"uk_tax_resident": True, "gbp_inr": 100})
+    expected = sum(t["gain"] for t in plan["trades"] if t["side"] == "SELL")  # BBB loss + cap trims
+    assert u["cgt_net_inr"] == pytest.approx(expected) and u["cgt_net_gbp"] == pytest.approx(expected / 100)
+    assert any("non-reporting" in n for n in u["notes"])
+    assert any("GOLDBEES" in n for n in u["notes"])  # held gold ETF
+    assert any("Self Assessment" in n for n in u["notes"])

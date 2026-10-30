@@ -34,6 +34,13 @@ DEFAULTS = {
         "dp_charge_inr": 15.93,
         "non_equity_classes": ["gold", "silver", "debt", "reit"],
     },
+    "uk_tax_policy": {
+        "cgt_basic_rate_pct": 18.0,
+        "cgt_higher_rate_pct": 24.0,
+        "annual_exempt_amount_gbp": 3000,
+        "report_if_proceeds_over_gbp": 50000,
+        "offshore_fund_classes": ["equity_index", "gold", "silver", "debt"],
+    },
     "sip_policy": {
         "monthly_amount_inr": 10000,
         "split_pct": {"core": 60, "satellite_top_up": 25, "gold": 10, "debt": 5},

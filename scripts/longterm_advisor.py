@@ -32,8 +32,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from autotrader.longterm import (analyze, load_holdings, load_policy, plan_rebalance,  # noqa: E402
                                  quality_score, scenario_ev, tax_report)
 from autotrader.longterm.holdings import apply_new_lots  # noqa: E402
+from autotrader.longterm.uk import uk_plan_view  # noqa: E402
 from autotrader.longterm.report import (render_analysis, render_holding_table, render_rebalance,  # noqa: E402
-                                        render_tax)
+                                        render_tax, render_uk)
 
 DISCLAIMER = ("_Educational tooling, not investment advice. The author of this report is not a "
               "SEBI-registered investment adviser. Verify prices, tax rules and lot-wise costs "
@@ -42,6 +43,11 @@ DISCLAIMER = ("_Educational tooling, not investment advice. The author of this r
 
 def _yaml(path: str | None) -> dict:
     return (yaml.safe_load(Path(path).read_text()) or {}) if path else {}
+
+
+def _ytd_net(ytd: dict | None) -> float:
+    y = ytd or {}
+    return float(y.get("stcg", 0)) - float(y.get("stcl", 0)) + float(y.get("ltcg", 0)) - float(y.get("ltcl", 0))
 
 
 def _emit(obj, md: str, as_json: bool) -> None:
@@ -123,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--holdings is required")
     holdings = load_holdings(args.holdings)
     decisions = _yaml(args.decisions)
+    if "use_funds" in decisions:  # personal override, e.g. UK residents avoiding Indian funds
+        policy["portfolio_policy"]["use_funds"] = bool(decisions["use_funds"])
+    residency = decisions.get("residency") or {}
     lot_notes = apply_new_lots(holdings, decisions.get("new_lots"))
 
     if args.command == "prices":
@@ -178,6 +187,9 @@ def main(argv: list[str] | None = None) -> int:
             ap.error("--decisions is required for rebalance")
         res = plan_rebalance(holdings, policy, decisions)
         md = render_rebalance(res)
+        if residency.get("uk_tax_resident"):
+            res["uk"] = uk_plan_view(holdings, policy, res, residency, _ytd_net(ytd))
+            md += "\n\n" + render_uk(res["uk"])
     else:
         res = {"analysis": analyze(holdings, policy), "tax": tax_report(holdings, policy, ytd)}
         parts = [f"# Long-term portfolio review — {datetime.date.today():%d %b %Y}", "", DISCLAIMER, "",
@@ -190,6 +202,9 @@ def main(argv: list[str] | None = None) -> int:
             res["rebalance"] = plan_rebalance(holdings, policy, decisions)
             parts[4:4] = [render_holding_table(res["analysis"], decisions, res["rebalance"], stats), ""]
             parts += ["", render_rebalance(res["rebalance"])]
+            if residency.get("uk_tax_resident"):
+                res["uk"] = uk_plan_view(holdings, policy, res["rebalance"], residency, _ytd_net(ytd))
+                parts += ["", render_uk(res["uk"])]
         md = "\n".join(parts) + "\n"
 
     if args.out and args.command != "prices":

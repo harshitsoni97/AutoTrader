@@ -105,6 +105,18 @@ tax_policy:
   # rather than computing their tax.
   non_equity_classes: [gold, silver, debt, reit]
 
+# UK tax for UK-resident investors holding Indian shares. Personal residency is
+# NOT set here: put `residency: {uk_tax_resident: true, gbp_inr: <rate>}` in your
+# own (git-ignored) investor/decisions.yaml. Check GOV.UK before relying on these.
+uk_tax_policy:
+  cgt_basic_rate_pct: 18.0
+  cgt_higher_rate_pct: 24.0
+  annual_exempt_amount_gbp: 3000
+  report_if_proceeds_over_gbp: 50000
+  # Indian ETFs/mutual funds have no UK reporting-fund status: gains on them are
+  # taxed as income, outside CGT, and losses on them are not allowable.
+  offshore_fund_classes: [equity_index, gold, silver, debt]
+
 # Monthly investing plan: how new money is split. No mutual-fund SIP is needed:
 # the core and gold slices are ETFs bought on the exchange each month. With
 # use_funds false, "core" means core_stocks and the gold/debt slices go to 0.
