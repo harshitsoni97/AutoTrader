@@ -13,6 +13,9 @@ import time
 from urllib.request import Request, urlopen
 
 BASE = "https://www.screener.in/company/{sym}/{view}"
+# Metrics this module derives: a refresh replaces all of them, so a stale one never lingers.
+DERIVED = {"sales_cagr_5y_pct", "profit_cagr_5y_pct", "roe_pct", "roce_pct", "ocf_to_pat",
+           "debt_to_equity", "promoter_holding_pct", "other_income_to_pbt", "net_profit_latest_cr"}
 UA = "Mozilla/5.0 (autotrader-longterm research)"
 
 

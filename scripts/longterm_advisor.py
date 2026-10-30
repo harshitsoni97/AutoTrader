@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "screener":
         import time
-        from autotrader.longterm.screener import snapshot
+        from autotrader.longterm.screener import DERIVED, snapshot
         # SYMBOL or SYMBOL=<screener id> when Screener's page id differs (e.g. NSE=544937)
         pages = dict(x.upper().split("=", 1) if "=" in x else (x.upper(), None) for x in args.symbols)
         syms = list(pages) or [h.symbol for h in load_holdings(args.holdings)]
@@ -109,7 +109,8 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             # keep the user's own notes and scenarios; refresh the fetched numbers
             merged = {**old, **{k: v for k, v in snap.items() if k != "symbol"}, "symbol": sym}
-            merged["metrics"] = {**(old.get("metrics") or {}), **snap["metrics"]}
+            kept = {k: v for k, v in (old.get("metrics") or {}).items() if k not in DERIVED}
+            merged["metrics"] = {**kept, **snap["metrics"]}
             path.write_text(yaml.safe_dump(merged, sort_keys=False, allow_unicode=True))
             res = quality_score(merged["metrics"], financial=bool(merged.get("financial")))
             results[sym] = res
