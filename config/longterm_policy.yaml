@@ -17,10 +17,11 @@ portfolio_policy:
 
   # Core / satellite: the core is diversified, low-cost and boring.
   core_target_pct: 50.0
+  # true = index ETFs + gold ETF for the core (bought on the exchange like shares).
   # false = direct stocks only: no mutual funds or ETFs (index, gold or liquid) are
   # proposed. Freed cash goes to `core_stocks` instead of `core_instruments`, and
   # the gold/debt targets are reported but not bought.
-  use_funds: false
+  use_funds: true
   # Direct-equity core: sector leaders filling the gaps a satellite portfolio
   # usually leaves (IT, pharma, capital goods, telecom). Edit freely.
   core_stocks:
@@ -96,12 +97,13 @@ tax_policy:
   # rather than computing their tax.
   non_equity_classes: [gold, silver, debt, reit]
 
-# Monthly SIP plan: how new money is split. With use_funds false, "core" means
-# the core_stocks and the gold/debt slices are left at 0.
+# Monthly investing plan: how new money is split. No mutual-fund SIP is needed:
+# the core and gold slices are ETFs bought on the exchange each month. With
+# use_funds false, "core" means core_stocks and the gold/debt slices go to 0.
 sip_policy:
   monthly_amount_inr: 10000
   split_pct:
     core: 60
-    satellite_top_up: 40       # topped up into the highest-conviction under-weight holdings
-    gold: 0
-    debt: 0
+    satellite_top_up: 25       # topped up into the highest-conviction under-weight holdings
+    gold: 10
+    debt: 5
