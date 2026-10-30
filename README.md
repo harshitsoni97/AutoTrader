@@ -911,6 +911,7 @@ It reads a broker holdings export and writes a plan for you to act on. It never 
 | Claude skill | job |
 |---|---|
 | `/invest-advisor` | entry point: runs the full review below |
+| `/invest-market-pulse` | macro backdrop (Nifty P/E, FII flows, crude, rupee, RBI) and latest results per holding |
 | `/invest-portfolio-doctor` | allocation, concentration, token positions, group/sector caps, asset mix |
 | `/invest-tax-harvest` | STCG 20% / LTCG 12.5% with the ₹1.25L exemption, set-off rules, loss and LTCG harvesting |
 | `/invest-research` | fundamentals quality score (ROCE, OCF/PAT, pledge, PE vs 5y median; GNPA/CAR for banks) |
