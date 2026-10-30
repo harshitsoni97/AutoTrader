@@ -149,3 +149,13 @@ def test_upstox_key_resolution_and_parsing():
     assert parse_ltp(payload, keys) == {"TMPV": 270.5, "Nifty 50": 22950.1}
     stats = candle_stats([["t2", 0, 120, 95, 110, 0, 0], ["t1", 0, 105, 80, 100, 0, 0]])
     assert stats == {"high_52w": 120, "low_52w": 80, "return_1y_pct": 10.0, "off_high_pct": -8.3}
+
+
+def test_pnl_import_defaults_to_short_term(tmp_path):
+    from autotrader.longterm.pnl import load_realised
+    p = tmp_path / "pnl.csv"
+    p.write_text("P&L Statement,\n,\nSymbol,ISIN,Quantity,Buy Value,Sell Value,Realized P&L\n"
+                 "AAA,INE1,10,100,150,50\nBBB,INE2,5,100,80,-20\nCCC,INE3,0,0,0,0\n")
+    r = load_realised(p, {"BBB": "long"})
+    assert r["realised_ytd"] == {"stcg": 50.0, "stcl": 0.0, "ltcg": 0.0, "ltcl": 20.0}
+    assert r["assumed_short_term"] == ["AAA"]

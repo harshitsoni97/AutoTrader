@@ -52,6 +52,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--policy", help="policy YAML (default config/longterm_policy.yaml)")
     ap.add_argument("--decisions", help="decisions YAML for rebalance/report")
     ap.add_argument("--ytd", help="YAML with realised_ytd {stcg, stcl, ltcg, ltcl} (defaults to --decisions)")
+    ap.add_argument("--pnl", help="broker P&L statement for this FY: realised gains replace realised_ytd "
+                                  "(holding period from `realised_terms` in --decisions, else short-term)")
     ap.add_argument("--metrics", help="YAML with fundamentals for `quality`")
     ap.add_argument("--scenarios", help="YAML with price/horizon/scenarios for `ev`")
     ap.add_argument("--prices", help="prices JSON from the `prices` command: overrides the export's LTP")
@@ -115,13 +117,23 @@ def main(argv: list[str] | None = None) -> int:
         decisions.setdefault("prices", {})
         decisions["prices"] = {**live, **(decisions["prices"] or {})}
     ytd = _yaml(args.ytd).get("realised_ytd") if args.ytd else decisions.get("realised_ytd")
+    pnl_note = ""
+    if args.pnl:
+        from autotrader.longterm.pnl import load_realised
+        realised = load_realised(args.pnl, decisions.get("realised_terms"))
+        ytd = decisions["realised_ytd"] = realised["realised_ytd"]
+        pnl_note = ("Realised this FY (from the P&L statement): "
+                    + ", ".join(f"{x['symbol']} {x['realised']:+,.0f} ({x['term']}-term)" for x in realised["lines"]))
+        if realised["assumed_short_term"]:
+            pnl_note += (f". Holding period not in the statement, assumed short-term: "
+                         f"{', '.join(realised['assumed_short_term'])} (set `realised_terms` to correct)")
 
     if args.command == "analyze":
         res = analyze(holdings, policy)
         md = render_analysis(res)
     elif args.command == "tax":
         res = tax_report(holdings, policy, ytd)
-        md = render_tax(res)
+        md = render_tax(res) + (f"\n\n{pnl_note}" if pnl_note else "")
     elif args.command == "rebalance":
         if not args.decisions:
             ap.error("--decisions is required for rebalance")
@@ -131,6 +143,8 @@ def main(argv: list[str] | None = None) -> int:
         res = {"analysis": analyze(holdings, policy), "tax": tax_report(holdings, policy, ytd)}
         parts = [f"# Long-term portfolio review — {datetime.date.today():%d %b %Y}", "", DISCLAIMER, "",
                  render_analysis(res["analysis"]), "", render_tax(res["tax"])]
+        if pnl_note:
+            parts += ["", pnl_note]
         if args.decisions:
             res["rebalance"] = plan_rebalance(holdings, policy, decisions)
             parts += ["", render_rebalance(res["rebalance"])]

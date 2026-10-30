@@ -18,6 +18,11 @@ argument-hint: "[holdings file]"
 python3 scripts/longterm_advisor.py tax --holdings investor/holdings.xlsx --ytd investor/decisions.yaml
 ```
 
+`--pnl investor/pnl.xlsx` imports the broker's P&L statement for this FY
+(Zerodha Console format: a `Symbol` / `Realized P&L` table). It has no buy dates,
+so each line counts as short-term unless `realised_terms: {SYMBOL: long}` in the
+decisions file says otherwise; ask the user, or check the tradebook.
+
 `--ytd` reads `realised_ytd: {stcg, stcl, ltcg, ltcl}` (what was already booked
 this financial year; the broker's tax P&L report has it). Without it the full
 ₹1.25L exemption is assumed unused.
