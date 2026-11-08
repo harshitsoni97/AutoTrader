@@ -159,3 +159,32 @@ def apply_new_lots(holdings: list[Holding], lots: list[dict]) -> list[str]:
         notes.append(f"{sym}: +{q:g} @ {px:.2f}{' on ' + str(lot['date']) if lot.get('date') else ''} "
                      f"(now {h.qty:g} shares, average {h.avg_price:.2f})")
     return notes
+
+
+def apply_sales(holdings: list[Holding], sales: list[dict]) -> tuple[dict, list[str]]:
+    """Remove shares sold after the export: [{symbol, qty, price, date?}].
+
+    FIFO like the depository: long-term shares leave first. Returns this FY's
+    realised gains from these sales ({stcg, stcl, ltcg, ltcl}) and report lines.
+    """
+    from .tax import split_sale  # local import: tax imports this module
+
+    by_sym = {h.symbol: h for h in holdings}
+    realised = {"stcg": 0.0, "stcl": 0.0, "ltcg": 0.0, "ltcl": 0.0}
+    notes = []
+    for sale in sales or []:
+        sym, q, px = str(sale["symbol"]).upper(), float(sale["qty"]), float(sale["price"])
+        h = by_sym[sym]
+        ltp, h.ltp = h.ltp, px
+        r = split_sale(h, q)
+        h.ltp = ltp
+        for k in realised:
+            realised[k] += getattr(r, k)
+        lt = r.lines[0]["lt_qty"]
+        h.qty_lt = None if h.qty_lt is None else h.qty_lt - lt
+        if h.base_qty is not None:
+            h.base_qty -= min(q, h.base_qty)
+        h.qty -= q
+        notes.append(f"{sym}: -{q:g} @ {px:.2f}{' on ' + str(sale['date']) if sale.get('date') else ''} "
+                     f"(gain {r.lines[0]['gain']:+,.0f}; {h.qty:g} left)")
+    return realised, notes

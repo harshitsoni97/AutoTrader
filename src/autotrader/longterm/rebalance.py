@@ -113,9 +113,19 @@ def plan_rebalance(holdings: list[Holding], policy: dict, decisions: dict) -> di
     core = core_list(policy)
     wsum = sum(c["weight"] for c in core) or 1
     if cash > 0:
+        # Single stocks in the core still respect the single-stock cap; index funds don't need it.
+        stock_core = not pp.get("use_funds", True)
+        cap_value = total * pp["max_position_pct"] / 100
+        pool = cash
         for c in core:
-            buys.append((c["symbol"], cash * c["weight"] / wsum, f"core: {c.get('name', c['symbol'])}"))
-        cash = 0.0
+            amt = pool * c["weight"] / wsum
+            if stock_core:
+                amt = max(0.0, min(amt, cap_value - after.get(c["symbol"], 0.0)))
+            buys.append((c["symbol"], amt, f"core: {c.get('name', c['symbol'])}"))
+            cash -= amt
+        if cash > 1:
+            notes.append(f"₹{cash:,.0f} left in cash: the core stocks reached the {pp['max_position_pct']:g}% "
+                         "single-stock cap. Keep it for the watchlist, or add another core name.")
     for sym, amt, why in buys:
         price = by_sym[sym].ltp if sym in by_sym else prices.get(sym)
         qty = math.floor(amt / price) if price else None

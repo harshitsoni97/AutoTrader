@@ -235,3 +235,21 @@ def test_uk_view_nri_resident_account_and_fig(holdings, policy):
                                               "india_account": "resident", "fig_eligible_until": "2029-04-05"})
     assert u["notes"][0].startswith("ACCOUNT FIRST")
     assert any("FIG regime available until 2029-04-05" in n for n in u["notes"])
+
+
+def test_sales_after_export_fifo_and_realised(holdings):
+    from autotrader.longterm.holdings import apply_sales
+    bbb = holdings[1]  # 50 @ 200, 20 LT
+    realised, notes = apply_sales(holdings, [{"symbol": "BBB", "qty": 25, "price": 220}])
+    assert realised["ltcg"] == pytest.approx(400) and realised["stcg"] == pytest.approx(100)
+    assert bbb.qty == 25 and bbb.qty_lt == 0
+    assert "BBB: -25 @ 220.00" in notes[0]
+
+
+def test_stock_core_respects_single_stock_cap(holdings, policy):
+    pp = policy["portfolio_policy"]
+    pp["use_funds"] = False
+    pp["core_stocks"] = [{"symbol": "INFY", "weight": 100}]
+    plan = plan_rebalance(holdings, policy, {"decisions": {"BBB": {"action": "exit"}}, "prices": {"INFY": 10}})
+    assert plan["post_weights_pct"]["INFY"] <= pp["max_position_pct"] + 0.01
+    assert plan["cash_left"] > 0 and any("single-stock cap" in n for n in plan["notes"])

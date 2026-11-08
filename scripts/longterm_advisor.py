@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from autotrader.longterm import (analyze, load_holdings, load_policy, plan_rebalance,  # noqa: E402
                                  quality_score, scenario_ev, tax_report)
-from autotrader.longterm.holdings import apply_new_lots  # noqa: E402
+from autotrader.longterm.holdings import apply_new_lots, apply_sales  # noqa: E402
 from autotrader.longterm.uk import uk_plan_view  # noqa: E402
 from autotrader.longterm.report import (render_analysis, render_holding_table, render_rebalance,  # noqa: E402
                                         render_tax, render_uk)
@@ -131,8 +131,12 @@ def main(argv: list[str] | None = None) -> int:
     decisions = _yaml(args.decisions)
     if "use_funds" in decisions:  # personal override, e.g. UK residents avoiding Indian funds
         policy["portfolio_policy"]["use_funds"] = bool(decisions["use_funds"])
+    if decisions.get("core_stocks"):  # personal core list replaces the policy's example list
+        policy["portfolio_policy"]["core_stocks"] = decisions["core_stocks"]
     residency = decisions.get("residency") or {}
     lot_notes = apply_new_lots(holdings, decisions.get("new_lots"))
+    sale_realised, sale_notes = apply_sales(holdings, decisions.get("sales_after_export"))
+    lot_notes += sale_notes
 
     if args.command == "prices":
         from autotrader.longterm.market import INDEX_KEYS, refresh
@@ -166,10 +170,13 @@ def main(argv: list[str] | None = None) -> int:
         decisions["prices"] = {**live, **(decisions["prices"] or {})}
     ytd = _yaml(args.ytd).get("realised_ytd") if args.ytd else decisions.get("realised_ytd")
     pnl_note = ""
+    if decisions.get("sales_after_export"):  # sales not yet in the P&L statement add to this FY's realised gains
+        ytd = {k: float((ytd or {}).get(k, 0)) + v for k, v in sale_realised.items()}
     if args.pnl:
         from autotrader.longterm.pnl import load_realised
         realised = load_realised(args.pnl, decisions.get("realised_terms"))
-        ytd = decisions["realised_ytd"] = realised["realised_ytd"]
+        ytd = {k: v + sale_realised[k] for k, v in realised["realised_ytd"].items()}
+        decisions["realised_ytd"] = ytd
         pnl_note = ("Realised this FY (from the P&L statement): "
                     + ", ".join(f"{x['symbol']} {x['realised']:+,.0f} ({x['term']}-term)" for x in realised["lines"]))
         if realised["assumed_short_term"]:
