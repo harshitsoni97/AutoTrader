@@ -50,3 +50,26 @@ Run after each results season (mid-Feb, mid-May, mid-Aug, mid-Nov):
 
 Price falls alone are not a thesis break. A thesis break with a price rise is
 still a sell. Write which one it is.
+
+## Daily alerts (between reviews)
+
+Put each thesis's valuation guard into the personal decisions file as machine-readable levels:
+
+```yaml
+guards: {HDFCBANK: {add_below: 850, trim_above: 1400}}   # held stocks
+watchlist_buy_below: {LT: 3530}                          # stocks you'd like to own
+events: {TMPV: 2026-11-13}                               # results / decision dates
+```
+
+Then, after the market closes:
+
+```bash
+python3 scripts/longterm_advisor.py prices --holdings <export> --decisions investor/decisions.yaml
+python3 scripts/longterm_advisor.py alerts --holdings <export> --decisions investor/decisions.yaml \
+    --prices investor/prices.json --since <yesterday's prices.json> --log-theses
+```
+
+It flags buy/add/trim levels reached, results due within 7 days, and moves of 8%+ in held or watchlist
+stocks (not ones being exited). With `--log-theses`, each alert becomes a review-log row in that stock's
+thesis, once a day. An alert is a reason to re-read the thesis, not a trade: for a results alert, read
+the result and update "what must go right" before acting.

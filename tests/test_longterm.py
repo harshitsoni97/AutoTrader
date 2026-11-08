@@ -253,3 +253,21 @@ def test_stock_core_respects_single_stock_cap(holdings, policy):
     plan = plan_rebalance(holdings, policy, {"decisions": {"BBB": {"action": "exit"}}, "prices": {"INFY": 10}})
     assert plan["post_weights_pct"]["INFY"] <= pp["max_position_pct"] + 0.01
     assert plan["cash_left"] > 0 and any("single-stock cap" in n for n in plan["notes"])
+
+
+def test_alerts_levels_events_moves_and_thesis_log(tmp_path):
+    import datetime
+    from autotrader.longterm.alerts import build_alerts, log_to_theses, render_alerts
+    dec = {"watchlist_buy_below": {"LT": 3500, "TCS": 2400},
+           "guards": {"HDFC": {"add_below": 850, "trim_above": 1400}, "ITC": {"add_below": 240, "trim_above": 450}},
+           "events": {"TMPV": "2026-11-13", "SBIN": "2026-12-30"}}
+    prices = {"LT": 3450, "TCS": 2500, "HDFC": 800, "ITC": 300, "AWFIS": 200}
+    a = build_alerts(dec, prices, previous={"AWFIS": 250}, held={"HDFC", "ITC", "AWFIS"},
+                     today=datetime.date(2026, 11, 9))
+    kinds = {(x["kind"], x["symbol"]) for x in a}
+    assert kinds == {("buy_zone", "LT"), ("add_zone", "HDFC"), ("event", "TMPV"), ("big_move", "AWFIS")}
+    (tmp_path / "HDFC.md").write_text("# HDFC\n| date | x | y | z |\n")
+    assert log_to_theses(a, tmp_path, datetime.date(2026, 11, 9)) == ["HDFC"]
+    assert log_to_theses(a, tmp_path, datetime.date(2026, 11, 9)) == []  # once a day
+    assert "ADD zone" in (tmp_path / "HDFC.md").read_text()
+    assert render_alerts([], "x").startswith("No alerts")

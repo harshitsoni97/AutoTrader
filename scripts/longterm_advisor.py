@@ -10,6 +10,8 @@
     python scripts/longterm_advisor.py ev        --scenarios investor/research/TITAN.yaml
     python scripts/longterm_advisor.py prices    --holdings investor/holdings.xlsx   # Upstox -> investor/prices.json
     python scripts/longterm_advisor.py screener  TMPV LT        # screener.in -> investor/research/<SYMBOL>.yaml
+    python scripts/longterm_advisor.py alerts    --holdings ... --decisions ... --prices investor/prices.json \
+                                                 [--since investor/prices-prev.json] [--log-theses]
 
 Pass --prices investor/prices.json to analyze/tax/rebalance/report to use live
 prices instead of the export's previous close.
@@ -57,7 +59,7 @@ def _emit(obj, md: str, as_json: bool) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["analyze", "tax", "rebalance", "report", "quality", "ev", "prices",
-                                        "screener"])
+                                        "screener", "alerts"])
     ap.add_argument("symbols", nargs="*", help="`screener`: NSE symbols (default: every holding)")
     ap.add_argument("--holdings", help="broker holdings export (.xlsx or .csv)")
     ap.add_argument("--policy", help="policy YAML (default config/longterm_policy.yaml)")
@@ -68,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--metrics", help="YAML with fundamentals for `quality`")
     ap.add_argument("--scenarios", help="YAML with price/horizon/scenarios for `ev`")
     ap.add_argument("--prices", help="prices JSON from the `prices` command: overrides the export's LTP")
+    ap.add_argument("--since", help="`alerts`: an earlier prices JSON, to flag big moves")
+    ap.add_argument("--log-theses", action="store_true", help="`alerts`: append each alert to investor/theses/<SYMBOL>.md")
     ap.add_argument("--no-stats", action="store_true", help="`prices`: skip 52-week stats (one call per symbol)")
     ap.add_argument("--out", help="write the markdown here as well as printing it")
     ap.add_argument("--json", action="store_true")
@@ -158,6 +162,21 @@ def main(argv: list[str] | None = None) -> int:
         if res["unresolved"]:
             md += f"\nNo instrument key for: {', '.join(res['unresolved'])}"
         _emit(res, md, args.json)
+        return 0
+
+    if args.command == "alerts":
+        from autotrader.longterm.alerts import build_alerts, log_to_theses, render_alerts
+        if not args.prices:
+            ap.error("--prices is required for alerts")
+        pf = json.loads(Path(args.prices).read_text())
+        prev = json.loads(Path(args.since).read_text())["prices"] if args.since else None
+        alerts = build_alerts(decisions, pf["prices"], prev, held={h.symbol for h in holdings if h.qty > 0})
+        md = render_alerts(alerts, pf.get("as_of", ""))
+        if args.log_theses:
+            touched = log_to_theses(alerts, "investor/theses")
+            if touched:
+                md += "\nLogged in theses: " + ", ".join(touched)
+        _emit(alerts, md, args.json)
         return 0
 
     stats = {}
